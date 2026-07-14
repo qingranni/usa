@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+.DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# Secrets — local API key, never committed. Copy Secrets.swift.example → Secrets.swift.
+Universal Search App/AI/Secrets.swift

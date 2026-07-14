@@ -1,0 +1,49 @@
+{
+  "search": {
+    "placeholder": "Search or ask",
+    "followUp": "Ask or follow-up",
+    "thinking": "Thinking…",
+    "searching": "Searching…"
+  },
+  "trip": {
+    "title": "SOMETHING",
+    "dateChip": "March 8–12 (±2)",
+    "peopleChip": "3 people"
+  },
+  "sections": {
+    "lodging": {
+      "name": "Exploring hotels",
+      "blurb": "We're getting somewhere! You looked at some places and it feels like we've got a few favourites."
+    },
+    "flights": {
+      "name": "Finding flights",
+      "blurb": "Looking at a few ways to get there."
+    },
+    "cars": {
+      "name": "Car rental",
+      "blurb": "Nothing concrete yet! But added to trip memory."
+    },
+    "activities": {
+      "name": "Things to do",
+      "blurb": "Ideas saved to your trip."
+    },
+    "other": {
+      "name": "Exploring",
+      "blurb": "Added to your trip."
+    }
+  },
+  "overview": {
+    "resultsHeading": "Results",
+    "comparingHeading": "Comparing",
+    "conversationLabel": "Conversation",
+    "refineLabel": "Refine",
+    "compareOnLabel": "Compare on"
+  },
+  "refineSuggestions": ["Allows pets", "Ocean view", "Hot tub", "Parking"],
+  "compare": {
+    "emptyPrompt": "Pick what to compare on from the panel above."
+  },
+  "actions": {
+    "removeFromTrip": "Remove from trip"
+  }
+}

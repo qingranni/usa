@@ -2,23 +2,19 @@
 //  ContentView.swift
 //  Universal Search App
 //
-//  Created by Benas Skripka on 25/06/2026.
+//  The app entry renders RootView. This thin alias is kept so existing
+//  references / previews resolve.
 //
 
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        RootView()
     }
 }
 
 #Preview {
     ContentView()
 }
+    

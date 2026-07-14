@@ -11,7 +11,8 @@ import SwiftUI
 struct Universal_Search_AppApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .font(.centra(size: 17))
         }
     }
 }
