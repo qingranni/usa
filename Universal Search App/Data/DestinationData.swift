@@ -5,8 +5,8 @@
 //  Dev-time-baked destination dataset for LA, Tampa, and 5 Mexican beach
 //  cities. Hotels + hero images are REAL data captured from the lodging search
 //  API (Expedia CDN imagery); flights, cars, and activities are authored. This
-//  layer is consulted before any OpenAI call so these destinations resolve
-//  deterministically and offline (see AppStore.assistant).
+//  layer is the first fallback after narrative golden paths, so covered
+//  destinations resolve deterministically and offline (see AppStore.assistant).
 //
 
 import Foundation
@@ -37,7 +37,7 @@ enum DestinationData {
     // MARK: - public entry
 
     /// Returns a fully-built thread for a covered destination, or `nil` so the
-    /// caller falls back to OpenAI/mock. Only fires for brand-new queries
+    /// caller falls back to generic mock templates. Only fires for brand-new queries
     /// (the app always spins free-text into a new thread).
     static func response(text: String) -> AssistantResponse? {
         guard let cities = match(text), let primary = cities.first else { return nil }
@@ -69,9 +69,14 @@ enum DestinationData {
                                  options: hotelOpts, more: "More places to stay")
             return reply("I found \(hotels.count) places to stay in \(name).", payload)
         case .flights:
+            var chips = ["3 travelers"]
+            if nonstopOnly { chips.append("Nonstop") }
+            chips.append("Economy")
             let payload = single(kind: .flights, title: "Flights to \(name)",
-                                 summary: "Fares into \(name) from JFK and Houston.",
-                                 options: flightOpts, more: "More flights")
+                                 summary: "Sorted for good prices and convenient times — like your past family visits.",
+                                 options: flightOpts, more: "More departing flights",
+                                 composition: .flightList,
+                                 filters: chips)
             return reply("Here are flights to \(name) from JFK and Houston.", payload)
         case .cars:
             let payload = single(kind: .cars, title: "Car rental in \(name)",
@@ -98,7 +103,9 @@ enum DestinationData {
 
     /// A single-kind thread: intro · hero cards · "more" carousel.
     private static func single(kind: Kind, title: String, summary: String,
-                               options: [Option], more: String) -> ThreadPayload {
+                               options: [Option], more: String,
+                               composition: ResultComposition = .blocks,
+                               filters: [String] = []) -> ThreadPayload {
         let top = Array(options.prefix(3))
         let rest = Array(options.dropFirst(3))
         var blocks: [BlockSpec] = [
@@ -110,7 +117,10 @@ enum DestinationData {
             blocks.append(BlockSpec(style: .carousel, items: rest, kind: kind))
         }
         return ThreadPayload(kind: kind, title: title, summary: summary,
-                             label: "Initial results", chip: "", options: top, blocks: blocks)
+                             label: "Initial results", chip: "", options: top,
+                             composition: composition,
+                             presentation: ResultsPresentation(filters: filters),
+                             blocks: blocks)
     }
 
     /// An open-ended trip overview spanning all four categories.
@@ -159,6 +169,10 @@ enum DestinationData {
     /// plausible authored values so every baked hotel renders a full rating line.
     private static let hotelReviews: [String: (score: Double, count: Int, city: String)] = [
         // Cancún
+        "Ocean Dream Cancun by GuruHotel": (8.8, 1058, "Cancún"),
+        "Hyatt Ziva Cancun": (9.2, 3560, "Cancún"),
+        "Dreams Sands Cancun Resort & Spa": (9.0, 2184, "Cancún"),
+        "Hard Rock Hotel Cancun - All Inclusive": (8.6, 1944, "Cancún"),
         "Riu Cancun All Inclusive": (8.8, 998, "Cancún"),
         "InterContinental Presidente Cancun Resort": (8.6, 997, "Cancún"),
         "Izla Hotel": (9.2, 996, "Isla Mujeres"),
@@ -254,7 +268,8 @@ enum DestinationData {
 
     private static func parseOrigin(_ text: String) -> String? {
         if rx(text, #"\b(jfk|new york|nyc|newark|ewr)\b"#) { return "JFK" }
-        if rx(text, #"\b(houston|iah|hou)\b"#) { return "IAH" }
+        if rx(text, #"\b(hou|hobby)\b"#) { return "HOU" }
+        if rx(text, #"\b(houston|iah)\b"#) { return "IAH" }
         return nil
     }
 
@@ -359,10 +374,15 @@ enum DestinationData {
 
     static let cancun = City(
         slug: "cancun", name: "Cancun", airport: "CUN",
-        hotels: [
-            Hotel(name: "Riu Cancun All Inclusive", price: 525, stars: 4.5, area: "Zona Hotelera beachfront", image: "cancun-1"),
-            Hotel(name: "InterContinental Presidente Cancun Resort", price: 312, stars: 4.0, area: "Zona Hotelera", image: "cancun-2"),
-            Hotel(name: "Izla Hotel", price: 289, stars: 4.0, area: "Isla Mujeres", image: "cancun-3"),
+        hotels: MexicoFixtureCatalog.hotels.map {
+            Hotel(
+                name: $0.name,
+                price: $0.nightlyPrice,
+                stars: $0.stars,
+                area: $0.area,
+                image: $0.imageURL
+            )
+        } + [
             Hotel(name: "Hotel Bonampak", price: 152, stars: 2.5, area: "Downtown Cancun", image: "https://mediaim.expedia.com/lodging/16000000/15090000/15083300/15083296/2e90295c.jpg"),
             Hotel(name: "Laguna Suites Golf & Spa All Inclusive", price: 184, stars: 3.0, area: "Pok Ta Pok", image: "https://mediaim.expedia.com/lodging/2000000/1180000/1170700/1170643/f5d914fa.jpg"),
             Hotel(name: "Hacienda Morelos Beachfront Hotel", price: 171, stars: 3.0, area: "Puerto Morelos", image: "https://mediaim.expedia.com/lodging/18000000/17120000/17119000/17118967/f673ba04.jpg"),
@@ -371,7 +391,23 @@ enum DestinationData {
             Hotel(name: "Grand Royal Lagoon", price: 128, stars: 3.0, area: "Laguna", image: "https://mediaim.expedia.com/lodging/1000000/190000/186000/185907/797b3e08.jpg"),
             Hotel(name: "Posada Amor Hotel Boutique", price: 149, stars: 3.0, area: "Puerto Morelos", image: "https://mediaim.expedia.com/lodging/12000000/11610000/11603300/11603281/7077705b.jpg"),
         ],
-        flights: [
+        flights: MexicoFixtureCatalog.flights.map {
+            Option(
+                title: "\($0.origin) → \($0.destination)",
+                detail: "$\($0.price) · \($0.stops) · \($0.duration) · \($0.airline)",
+                price: "$\($0.price)",
+                priceValue: $0.price,
+                departTime: $0.departTime,
+                arriveTime: $0.arriveTime,
+                stops: $0.stops,
+                duration: $0.duration,
+                cabin: "Economy",
+                tripType: "Round trip",
+                airlines: [$0.airline],
+                logoURLs: ["airline-ua"],
+                highlights: $0.seatsTogether ? "Seats together · \($0.bagsIncluded) bags included" : nil
+            )
+        } + [
             flight("JFK → CUN", dep: "8:10 am", arr: "12:30 pm", "4h 20m", "Nonstop", cabin: "Economy", ["JetBlue"], 318),
             flight("JFK → CUN", dep: "6:00 am", arr: "10:15 am", "4h 15m", "Nonstop", cabin: "Economy, Comfort+", ["Delta"], 352),
             flight("JFK → CUN", dep: "7:35 am", arr: "2:25 pm", "6h 50m", "1 stop", cabin: "Economy", ["American", "Alaska"], 289),
@@ -380,7 +416,15 @@ enum DestinationData {
             flight("IAH → CUN", dep: "11:10 am", arr: "4:30 pm", "5h 20m", "1 stop", cabin: "Economy", ["American", "JetBlue"], 243),
         ],
         cars: cars,
-        activities: [
+        activities: MexicoFixtureCatalog.activities.map {
+            Option(
+                title: $0.name,
+                detail: "$\($0.priceFrom) · \($0.duration)",
+                price: "$\($0.priceFrom)",
+                imageURL: $0.imageURL,
+                priceValue: $0.priceFrom
+            )
+        } + [
             act("Snorkeling at MUSA Underwater Museum", 65, "3 hrs"),
             act("Isla Mujeres catamaran cruise", 89, "Full day"),
             act("Chichen Itza day trip", 120, "Full day"),
@@ -587,9 +631,9 @@ enum DestinationData {
             flight("JFK → TPA", dep: "8:45 am", arr: "11:50 am", "3h 05m", "Nonstop", cabin: "Economy", ["JetBlue"], 178),
             flight("JFK → TPA", dep: "6:15 am", arr: "9:25 am", "3h 10m", "Nonstop", cabin: "Economy, Comfort+", ["Delta"], 204),
             flight("JFK → TPA", dep: "7:30 am", arr: "1:10 pm", "5h 40m", "1 stop", cabin: "Economy", ["American", "JetBlue"], 168),
-            flight("IAH → TPA", dep: "9:40 am", arr: "1:00 pm", "2h 20m", "Nonstop", cabin: "Economy", ["United"], 214),
-            flight("IAH → TPA", dep: "6:50 am", arr: "10:15 am", "2h 25m", "Nonstop", cabin: "Economy", ["Southwest"], 186),
-            flight("IAH → TPA", dep: "11:20 am", arr: "5:30 pm", "5h 10m", "1 stop", cabin: "Economy", ["Spirit", "JetBlue"], 148),
+            flight("HOU → TPA", dep: "9:40 am", arr: "1:00 pm", "2h 20m", "Nonstop", cabin: "Economy", ["United"], 214),
+            flight("HOU → TPA", dep: "6:50 am", arr: "10:15 am", "2h 25m", "Nonstop", cabin: "Economy", ["Southwest"], 186),
+            flight("HOU → TPA", dep: "11:20 am", arr: "5:30 pm", "5h 10m", "1 stop", cabin: "Economy", ["Spirit", "JetBlue"], 148),
         ],
         cars: cars,
         activities: [

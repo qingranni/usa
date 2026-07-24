@@ -87,11 +87,11 @@ struct WaveGradientView: View {
 
         guard let solid = solidStartColor else { return finals }
 
-        let midBlue = Color(hex: "2F80ED")
+        let midColor = Color(hex: "85868D")
         let mids: [Color] = [
-            midBlue, midBlue, midBlue,
-            midBlue, midBlue, midBlue,
-            midBlue, midBlue, midBlue,
+            midColor, midColor, midColor,
+            midColor, midColor, midColor,
+            midColor, midColor, midColor,
         ]
 
         let phase1End: Float = 0.06
@@ -144,5 +144,48 @@ struct WaveGradientView: View {
             green: Double(ag + (bg - ag) * cp),
             blue: Double(ab + (bb - ab) * cp)
         )
+    }
+}
+
+/// A classic left-to-right "AI reasoning" shimmer: a soft highlight band sweeps
+/// horizontally across a solid base color, looping. `ShimmerOverlay` masks it to
+/// the highlighted text glyphs, so the recognized word appears to shimmer while
+/// it resolves. The base matches the word's resting color, so stopping the
+/// shimmer is seamless.
+struct ShimmerSweepView: View {
+    var baseColor: Color = Color(hex: "0C0E1C")
+    var highlightColor: Color = Color(hex: "85868D")
+    /// Seconds for one full left → right pass.
+    var duration: Double = 1.15
+
+    @State private var startDate = Date()
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let elapsed = timeline.date.timeIntervalSince(startDate)
+            let phase = elapsed.truncatingRemainder(dividingBy: duration) / duration
+            LinearGradient(
+                gradient: sweepGradient(phase: phase),
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+    }
+
+    private func sweepGradient(phase: Double) -> Gradient {
+        // Half-width of the moving band as a fraction of the word's width.
+        let bandHalf = 0.18
+        // The band's center travels from just off the left edge to just off the
+        // right edge, so it fully enters and exits — the loop reset lands while
+        // the word is uniformly `baseColor`, hiding the seam.
+        let center = -bandHalf + (1 + 2 * bandHalf) * phase
+        func clamp(_ v: Double) -> Double { min(1, max(0, v)) }
+        return Gradient(stops: [
+            .init(color: baseColor, location: 0),
+            .init(color: baseColor, location: clamp(center - bandHalf)),
+            .init(color: highlightColor, location: clamp(center)),
+            .init(color: baseColor, location: clamp(center + bandHalf)),
+            .init(color: baseColor, location: 1),
+        ])
     }
 }

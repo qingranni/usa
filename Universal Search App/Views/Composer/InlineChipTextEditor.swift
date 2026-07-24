@@ -52,7 +52,6 @@ private let chipHPad: CGFloat = 8
 private let chipVPad: CGFloat = 6
 private let chipSpacing: CGFloat = 4
 private let chipLineHeight: CGFloat = 30
-private let chipAssetMap = ["mappin": "location-pin", "calendar": "calendar-icon", "person": "guests-icon"]
 
 private func chipSize(for chip: ChipToken, font: UIFont) -> CGSize {
     let textSize = (chip.label as NSString).size(withAttributes: [.font: font])
@@ -108,12 +107,8 @@ private class ChipUIView: UIView {
             insertSubview(dimView, aboveSubview: iv)
         }
 
-        let resolvedIcon: UIImage? = if let assetName = chipAssetMap[chip.icon] {
-            UIImage(named: assetName)?.withTintColor(fgColor, renderingMode: .alwaysOriginal)
-        } else {
-            UIImage.egds(chip.icon)?.withTintColor(fgColor, renderingMode: .alwaysOriginal)
-        }
-        iconView.image = resolvedIcon
+        iconView.image = UIImage.egds(chip.icon)?
+            .withTintColor(fgColor, renderingMode: .alwaysOriginal)
         iconView.contentMode = .scaleAspectFit
         addSubview(iconView)
 
@@ -183,6 +178,10 @@ struct InlineChipTextEditor: UIViewRepresentable {
     var chips: [ChipToken] = []
     var chipRenderMode: ChipRenderMode = .leading
     var placeholder: String = "Follow up"
+    /// When false the built-in UIKit placeholder is suppressed — the host draws its
+    /// own (e.g. a SwiftUI placeholder that scales continuously across composer
+    /// states). Typed text and the cursor are unaffected.
+    var showsPlaceholder: Bool = true
     var isFocused: Binding<Bool>? = nil
     var highlightRange: NSRange? = nil
     var fontName: String = "CentraNo2-Book"
@@ -400,7 +399,7 @@ struct InlineChipTextEditor: UIViewRepresentable {
         if let highlight = highlightRange {
             let color: UIColor = context.coordinator.highlightOverlayActive
                 ? .clear
-                : UIColor(Color(hex: "0037D0"))
+                : UIColor(Color(hex: "0C0E1C"))
             let clampedLoc = max(0, min(highlight.location, userText.length))
             let clampedLen = min(highlight.length, userText.length - clampedLoc)
             let safeRange = NSRange(location: clampedLoc, length: clampedLen)
@@ -507,7 +506,7 @@ struct InlineChipTextEditor: UIViewRepresentable {
             let attrEnd = coordinator.textOffsetToAttrOffset(highlight.location + highlight.length)
             let color: UIColor = coordinator.highlightOverlayActive
                 ? .clear
-                : UIColor(Color(hex: "0037D0"))
+                : UIColor(Color(hex: "0C0E1C"))
             let safeStart = max(0, min(attrStart, result.length))
             let safeEnd = max(safeStart, min(attrEnd, result.length))
             if safeEnd > safeStart {
@@ -535,10 +534,10 @@ struct InlineChipTextEditor: UIViewRepresentable {
         coordinator.layoutChipViews(in: textView, chips: chips, font: chipFont)
     }
 
-    // MARK: - Wave Gradient Overlay
+    // MARK: - Shimmer Overlay
 
-    class WaveGradientOverlay: UIView {
-        private var hostingController: UIHostingController<WaveGradientView>?
+    class ShimmerOverlay: UIView {
+        private var hostingController: UIHostingController<ShimmerSweepView>?
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -548,15 +547,13 @@ struct InlineChipTextEditor: UIViewRepresentable {
 
         required init?(coder: NSCoder) { fatalError() }
 
-        func startAnimating(solidStartColor: Color? = nil) {
+        func startAnimating() {
             stopAnimating()
-            let gradient = WaveGradientView(
-                color1: Color(hex: "2F80ED"),
-                color2: Color(hex: "0037D0"),
-                color3: Color(hex: "D6E4FA"),
-                solidStartColor: solidStartColor
+            let shimmer = ShimmerSweepView(
+                baseColor: Color(hex: "0C0E1C"),
+                highlightColor: Color(hex: "85868D")
             )
-            let hc = UIHostingController(rootView: gradient)
+            let hc = UIHostingController(rootView: shimmer)
             hc.view.backgroundColor = .clear
             hc.view.frame = bounds
             hc.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -590,7 +587,7 @@ struct InlineChipTextEditor: UIViewRepresentable {
         var chipPositions: [(chipId: String, textOffset: Int)] = []
         private var placeholderLabel: UILabel?
 
-        private var gradientOverlay: WaveGradientOverlay?
+        private var gradientOverlay: ShimmerOverlay?
         fileprivate(set) var animatingHighlightRange: NSRange?
         var highlightOverlayActive: Bool { gradientOverlay != nil }
 
@@ -688,13 +685,13 @@ struct InlineChipTextEditor: UIViewRepresentable {
             stopHighlightAnimation()
             animatingHighlightRange = range
 
-            let overlay = WaveGradientOverlay()
+            let overlay = ShimmerOverlay()
             overlay.isUserInteractionEnabled = false
             textView.addSubview(overlay)
             gradientOverlay = overlay
 
             updateOverlayMask(in: textView, range: range)
-            overlay.startAnimating(solidStartColor: Color(hex: "0c0e1c"))
+            overlay.startAnimating()
         }
 
         func stopHighlightAnimation() {
@@ -930,7 +927,7 @@ struct InlineChipTextEditor: UIViewRepresentable {
         }
 
         func updatePlaceholder(in textView: UITextView) {
-            let showPlaceholder = parent.text.isEmpty && parent.chips.isEmpty
+            let showPlaceholder = parent.showsPlaceholder && parent.text.isEmpty && parent.chips.isEmpty
             placeholderLabel?.isHidden = !showPlaceholder
 
             guard showPlaceholder, let label = placeholderLabel else { return }

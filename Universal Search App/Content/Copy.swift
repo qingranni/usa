@@ -2,8 +2,8 @@
 //  Copy.swift
 //  Universal Search App
 //
-//  The content source of truth for static UI copy — separate from the mock
-//  database (MockData.swift) and the OpenAI responses (OpenAIClient.swift).
+//  The content source of truth for static UI copy — separate from narrative,
+//  mock, and Gen-UI result content.
 //
 //  All copywriter-facing strings live in the bundled `CopyStrings.json`, which is
 //  the ONLY place strings are defined. Access is key-based via dotted paths, so

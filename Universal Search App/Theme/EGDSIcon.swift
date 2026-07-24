@@ -38,6 +38,7 @@ enum EGDSIcons {
         "close": "close",
         "history": "history",
         "distance": "trips",
+        "more_vert": "more-vert",
 
         // SF Symbol names used directly across the views.
         "chevron.left": "chevron-left",
@@ -88,6 +89,38 @@ enum EGDSIcons {
     }
 }
 
+/// Shared semantic glyph selection for every filter-chip treatment. Keeping the
+/// mapping beside the EGDS resolver prevents composer, results, and scrubber
+/// variants from drifting back to SF Symbols or legacy one-off assets.
+enum FilterChipIconName {
+    static func forLabel(_ label: String) -> String {
+        let value = label.lowercased()
+        if value.contains("date") || value.contains("week") || value.contains("mar ") {
+            return "calendar"
+        }
+        if value.contains("guest") || value.contains("traveler")
+            || value.contains("adult") || value.contains("child") || value.contains("teen") {
+            return "person.2"
+        }
+        if value.contains("flight") || value.contains("nonstop")
+            || value.contains("seat") || value.contains("bag") {
+            return "flight"
+        }
+        if value.contains("$") || value.contains("budget") || value.contains("price") {
+            return "local_activity"
+        }
+        if value.contains("destination") || value.contains("from") || value.contains("to")
+            || value.contains("pick-up") || value.contains("drop-off")
+            || value.contains("mexico") || value.contains("cancun") {
+            return "mappin"
+        }
+        if value.contains("beach") || value.contains("activity") {
+            return "local_activity"
+        }
+        return "slider.horizontal.3"
+    }
+}
+
 /// Custom EGDS glyph rendered as a tintable, square, explicitly sized image.
 /// Drop-in for `Image(systemName:)`; pass the point size the symbol used.
 struct EGDSIcon: View {
@@ -99,6 +132,7 @@ struct EGDSIcon: View {
         self.size = size
     }
 
+    @ViewBuilder
     var body: some View {
         Image(EGDSIcons.asset(for: name))
             .renderingMode(.template)

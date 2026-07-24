@@ -26,7 +26,7 @@ struct SearchMorphSurface: View {
     var progress: CGFloat
     let pill: CGRect
     let full: CGRect
-    var placeholder: String = "Where do you want to go?"
+    var placeholder: String = Copy["search.placeholder"]
 
     /// home pill off-white — #F7F4F3
     private let offWhite = Color(red: 0xF7 / 255, green: 0xF4 / 255, blue: 0xF3 / 255)

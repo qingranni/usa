@@ -43,7 +43,7 @@ struct ResultCardView: View {
                     .padding(.top, 4)
             }
 
-            Text("Includes taxes and fees")
+            Text(Copy["results.includesTaxesAndFees"])
                 .font(.centra(size: 13))
                 .foregroundStyle(Theme.onSurfaceVariant)
                 .padding(.top, 10)
@@ -53,7 +53,7 @@ struct ResultCardView: View {
                     .font(.centra(size: 20, weight: .semibold))
                     .foregroundStyle(Theme.figmaInk)
                 if card.totalPrice != nil, let nightly = card.displayPrice {
-                    Text("\(nightly)/night")
+                    Text("\(nightly)\(Copy["results.perNightSuffix"])")
                         .font(.centra(size: 14))
                         .foregroundStyle(Theme.onSurfaceVariant)
                 }

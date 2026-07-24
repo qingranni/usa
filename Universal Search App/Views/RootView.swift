@@ -20,6 +20,10 @@ struct Metrics {
 
 struct RootView: View {
     @State private var store = AppStore()
+    /// Shared namespace so the quick answer's text flies (matchedGeometry) from
+    /// the resting inline-answer card up into its slot in the conversation canvas
+    /// when the composer opens over it — a true morph, not a cross-fade.
+    @Namespace private var answerMorph
 
     var body: some View {
         GeometryReader { geo in
@@ -48,32 +52,32 @@ struct RootView: View {
             let cardMargin = m.size.width * (1 - cardScale) / 2
 
             let launchComposerExit = launching && store.launchFromCurrent && phase == .collapsing
-            let composerShrink = store.composerActive || launchComposerExit
+            // Composing a reply to a quick answer OR over a response/conversation
+            // canvas stays on a clean surface (see InlineAnswerView's compose mode),
+            // so it opts OUT of the Siri-style canvas shrink/blur/wash used for every
+            // other composer. Launching the minimised composer from a conversation
+            // must never blur the background — that's a canvas-specific case.
+            let composingOverAnswer = store.composerActive
+                && (store.inlineAnswerDraft != nil || store.openConversation != nil)
+            let composerShrink = (store.composerActive && !composingOverAnswer) || launchComposerExit
             let canvasScale = composerShrink ? cardScale : 1
             let canvasOffset = composerShrink ? cardMargin : 0
             let canvasCorner: CGFloat = composerShrink ? 34 / cardScale : 0
             let canvasShadow: Double = composerShrink ? 0.28 : 0
-            // While the composer is up, the backdrop canvas recedes: a soft blur
-            // plus a 75% black overlay so focus lands on the sheet.
+            // While the composer is up, the backdrop canvas recedes behind
+            // Figma's light, frosted wash so focus lands on the white sheet.
             let canvasBlur: CGFloat = composerShrink ? 15 : 0
-            let canvasDim: Double = composerShrink ? 0.75 : 0
+            let canvasWash: Double = composerShrink ? 0.5 : 0
             let blackingOut = launching && store.launchFromCurrent && phase == .collapsing
             let blackout = progress(of: store.launch, in: 0...AppStore.launchBlackoutEnd)
             let canvasLaunchOpacity: Double = blackingOut ? blackout.fadeOut : 1
 
             ZStack(alignment: .top) {
-                // Keep the near-black frame around the composer while it is open,
-                // then switch every launch path to the shared #F7F4F3 surface.
-                (launching
-                    ? Theme.cardItem
-                    : Color(red: 5 / 255, green: 5 / 255, blue: 5 / 255))
+                // Keep the composer wash warm, but use white behind the centered
+                // #F7F4F3 swap cards so their rounded surface remains visible.
+                (launching ? Color.white : Theme.cardItem)
                     .ignoresSafeArea()
                     .opacity(store.composerActive || launching ? 1 : 0)
-
-                CardSwapShockwaveOverlay(trigger: store.swapShockwaveTrigger)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                    .zIndex(1)
 
                 // The live canvas — L0 parent, the curtain layers and the
                 // follow-up pill. During composer launch it fades away as one
@@ -88,7 +92,7 @@ struct RootView: View {
                     .scaleEffect(canvasScale, anchor: .top)
                     .offset(y: canvasOffset)
                     .blur(radius: canvasBlur)
-                    .overlay(Color.black.opacity(canvasDim).ignoresSafeArea())
+                    .overlay(Color.white.opacity(canvasWash).ignoresSafeArea())
                     .shadow(color: .black.opacity(canvasShadow), radius: 24, y: 10)
                     .opacity(canvasLaunchOpacity)
                     // Drive the composer shrink from one spring keyed to the toggle.
@@ -123,8 +127,8 @@ struct RootView: View {
                 // Homepage launch load state — the Figma loading video plays
                 // full-screen while the new thread builds, then fades off over
                 // the first moments of the direct card → results morph.
-                if launching && !store.launchFromCurrent {
-                    let loadFade: Double = phase == .expanding
+                if (launching && !store.launchFromCurrent) || store.homeSubmitLoading {
+                    let loadFade: Double = launching && phase == .expanding
                         ? progress(of: store.launch,
                                    in: AppStore.launchLoadFadeStart...AppStore.launchLoadFadeEnd).fadeOut
                         : 1
@@ -167,6 +171,14 @@ struct RootView: View {
                     .zIndex(20)
                 }
 
+                // Full-screen package detail (Hyatt Ziva). Mounted above every
+                // other layer — it carries its own back/favorite chrome — and
+                // morphs its hero out of the tapped card's captured image rect.
+                if store.detailCard != nil {
+                    PackageDetailView(store: store, metrics: m)
+                        .zIndex(30)
+                }
+
             }
             .frame(width: geo.size.width, height: fullH, alignment: .top)
             .coordinateSpace(.named("root"))
@@ -176,6 +188,21 @@ struct RootView: View {
             .ignoresSafeArea()
         }
         .preferredColorScheme(.light)   // the whole app is light now
+        .alert(
+            "Data unavailable",
+            isPresented: Binding(
+                get: { store.dataSourceErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented { store.dataSourceErrorMessage = nil }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                store.dataSourceErrorMessage = nil
+            }
+        } message: {
+            Text(store.dataSourceErrorMessage ?? "The selected data sources are unavailable.")
+        }
         #if DEBUG
         .task {
             if let level = ProcessInfo.processInfo.environment["SEED_DEMO"] {
@@ -234,24 +261,36 @@ struct RootView: View {
             guard store.launchFromCurrent else { return 0 }
             return liveCurtainPush * (1 - liveCurtainSwap.eased)
         }()
+        // The RESTING inline answer floats over the live canvas: blur and dim the
+        // REAL background layers behind it so the answer (and bottom nav) stay
+        // legible above the softened view. Once the composer opens over it, the
+        // answer has morphed into the full conversation canvas (see
+        // `canvasConversation`), which is the surface itself — so the backdrop
+        // blur retires and the floating card is unmounted.
+        let showingInlineAnswer = store.inlineAnswerDraft != nil && !store.composerActive
+        let answerBackdropBlur: CGFloat = showingInlineAnswer ? 20 : 0
+        let answerBackdropWash: Double = showingInlineAnswer ? 0.6 : 0
         ZStack(alignment: .top) {
-            // L0 — persistent parent. Hidden while launching from a canvas so the
-            // near-black backdrop shows behind the collapsing/expanding card
-            // instead of the trip list (we never navigate to the trip overview).
-            if showHome {
-                EmptySearchView(store: store, metrics: m)
-            } else if !store.launching {
-                TripOverviewView(store: store, metrics: m)
-            }
+            // Background layers (home/trip + curtain) — blurred + washed behind an
+            // inline answer, sharp otherwise.
+            ZStack(alignment: .top) {
+                // L0 — persistent parent. Hidden while launching from a canvas so the
+                // near-black backdrop shows behind the collapsing/expanding card
+                // instead of the trip list (we never navigate to the trip overview).
+                if showHome {
+                    EmptySearchView(store: store, metrics: m)
+                } else if !store.launching {
+                    TripOverviewView(store: store, metrics: m)
+                }
 
-            // Curtain layers — mounted whenever a thread is open.
-            if store.revealingThreadID != nil, let thread = store.openThread {
+                // Curtain layers — mounted whenever a thread is open.
+                if store.revealingThreadID != nil, let thread = store.openThread {
                 ZStack(alignment: .top) {
                     // A live Apple Map behind the results sheet, revealed by
                     // dragging the sheet down. Composer launches freeze/hide it
                     // during collapse; homepage launches blur/fade it in under the
                     // reverse-shockwave cover.
-                    if ResultsMapView.hasMap(for: thread) {
+                    if thread.presentation.showsMap && store.canvasConversation == nil {
                         // Freeze the live map during the launch entrance — as a
                         // UIViewRepresentable it re-renders tiles under the morph
                         // and jitters. Hidden through composer collapse; homepage
@@ -261,12 +300,23 @@ struct RootView: View {
                         // full-screen and simply blurs/fades while the canvas sheet
                         // scales into or out of the trip card.
                         let mapFade = progress(of: store.morphReveal, in: 0...0.9)
-                        ResultsMapView(thread: thread)
+                        // As the results sheet rises toward its large detent the
+                        // map all but disappears; rather than leave a crisp sliver
+                        // of live map peeking above, blur it and lay a white wash
+                        // over it so it reads as Figma's soft frosted backdrop.
+                        // Driven within the sheet's drag/snap transactions, so it
+                        // tracks the finger and animates with the detent snap.
+                        let mapCover = store.mapCoverage
+                        ResultsMapView(store: store, thread: thread)
                             .frame(width: m.size.width, height: m.size.height)
-                            .blur(radius: Theme.morphBlurRadius * 1.8 * mapFade.eased + homeMapBlur)
+                            .blur(radius: Theme.morphBlurRadius * 1.8 * mapFade.eased + homeMapBlur + 22 * mapCover)
+                            .overlay(Color.white.opacity(0.6 * mapCover))
                             .opacity((mapHidden ? 0.0 : mapFade.fadeOut) * homeMapOpacity)
                             .animation(.easeOut(duration: 0.3), value: mapHidden)
                             .allowsHitTesting(store.morphReveal < 0.1)
+                            // Tapping the exposed map above the sheet returns to the
+                            // map+sheet split (medium detent) — handled by CurtainSheet.
+                            .onTapGesture { store.mapSplitRequest += 1 }
                             .zIndex(4.6)
                     }
 
@@ -279,7 +329,7 @@ struct RootView: View {
                         // Canvas is the morphing white surface across reveal 0→1: full
                         // screen, then pushed down below the query card. Fades toward
                         // the trip.
-                        CurtainSheet(store: store, thread: thread, metrics: m)
+                        CurtainSheet(store: store, thread: thread, metrics: m, answerMorph: answerMorph)
                             .zIndex(5)
                     }
                     .offset(y: homeCanvasOffset)
@@ -291,6 +341,24 @@ struct RootView: View {
                 // During composer launches this is the incoming card itself, not a
                 // duplicate overlay, so it can keep morphing into the canvas.
                 .opacity(curtainOpacity)
+            }
+            }
+            .blur(radius: answerBackdropBlur)
+            .overlay(Color.white.opacity(answerBackdropWash).allowsHitTesting(false))
+            .animation(Theme.springMorph, value: showingInlineAnswer)
+
+            // ONE conversation surface for the fresh quick-answer flow: a resting
+            // card (presence 0) that grows to the full conversation (presence 1)
+            // when the composer opens, and stays put through the reply/stream and
+            // the trip-entry promote — no view swap, no pseudo-states. The
+            // CurtainSheet only renders conversations reached later from the trip.
+            if store.quickConversation != nil {
+                QuickConversationView(
+                    store: store,
+                    metrics: m,
+                    presence: (store.inlineAnswerDraft != nil && !store.composerActive) ? 0 : 1
+                )
+                .zIndex(9)
             }
 
             // Shared bottom navigation for every non-home surface: home, the AI
@@ -340,7 +408,8 @@ struct RootView: View {
 
                         GlassPill(variant: .followup,
                                   isDark: false,
-                                  loading: store.isLoading) { _ in }
+                                  loading: store.isLoading,
+                                  promptText: store.composerPrompt) { _ in }
                             .allowsHitTesting(false)
                             .overlay {
                                 Button {
@@ -349,7 +418,14 @@ struct RootView: View {
                                     Color.clear.contentShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel("Ask or follow up")
+                                .accessibilityLabel(
+                                    store.inlineAnswerDraft != nil
+                                        || store.openConversation != nil
+                                        || store.openThread?.presentation.canvasLayout == .mexicoOrientation
+                                        || (store.openThreadID == nil && !store.showHome)
+                                        ? "Ask anything"
+                                        : "Ask or follow up"
+                                )
                             }
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
@@ -379,9 +455,29 @@ struct RootView: View {
                     }
                     .padding(.horizontal, 32)
                     .padding(.bottom, m.safeTop > 20 ? 40 : 24)
+                    // The destination-discovery prompt takes over the dock while it
+                    // is showing, so fade the standard controls out beneath it.
+                    .opacity(store.showsDestinationDiscovery ? 0 : 1)
+                    .allowsHitTesting(!store.showsDestinationDiscovery)
+
+                    if let variant = store.destinationDiscoveryVariant {
+                        DestinationDiscoveryPill(variant: variant) { store.openComposer() }
+                            .padding(.horizontal, 32)
+                            .padding(.bottom, m.safeTop > 20 ? 40 : 24)
+                            .frame(maxWidth: .infinity, alignment: .bottom)
+                            // Grows up out of the resting pill's bottom edge, so it
+                            // reads as the pill morphing into the prompt (and back).
+                            .transition(
+                                .scale(scale: 0.86, anchor: .bottom).combined(with: .opacity)
+                            )
+                    }
                 }
-                // The morph surface replaces the whole dock while composing.
-                .opacity(store.composerActive ? 0 : 1)
+                .animation(Theme.springMorph, value: store.showsDestinationDiscovery)
+                // The morph surface replaces the whole dock while composing. Keyed
+                // to the entrance (not `composerActive`) so on close the resting
+                // pill is back at full opacity exactly as the surface finishes
+                // morphing down to it — no fade-in gap after the surface unmounts.
+                .opacity(store.composerEntrance > 0.02 ? 0 : 1)
                 .allowsHitTesting(!store.composerActive)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .ignoresSafeArea(.keyboard)
@@ -389,71 +485,7 @@ struct RootView: View {
             }
         }
     }
-}
 
-private struct CardSwapShockwaveOverlay: View {
-    let trigger: Int
-
-    @State private var active = false
-    @State private var visible = false
-    @State private var controller = DotGridController()
-    @State private var replayTask: Task<Void, Never>?
-
-    var body: some View {
-        ZStack {
-            if active {
-                DotGridView(params: .default, controller: controller, transparent: true)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .opacity(visible ? 1 : 0)
-                    .scaleEffect(visible ? 1 : 0.985)
-                    .transition(.opacity)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: trigger) { _, newValue in
-            guard newValue > 0 else { return }
-            replay()
-        }
-        .onDisappear {
-            replayTask?.cancel()
-            replayTask = nil
-        }
-    }
-
-    @MainActor
-    private func replay() {
-        replayTask?.cancel()
-        controller = DotGridController()
-        controller.mode = .flat
-        active = true
-        visible = false
-
-        withAnimation(.easeOut(duration: 0.14)) {
-            visible = true
-        }
-
-        replayTask = Task { @MainActor in
-            do {
-                // Let SwiftUI mount the MTKView and attach the renderer first.
-                try await Task.sleep(for: .milliseconds(35))
-                guard !Task.isCancelled else { return }
-                controller.fire(.shockwave)
-
-                try await Task.sleep(for: .seconds(1.55))
-                guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.35)) {
-                    visible = false
-                }
-
-                try await Task.sleep(for: .milliseconds(350))
-                guard !Task.isCancelled else { return }
-                active = false
-                replayTask = nil
-            } catch {
-                // Cancellation is expected if another launch starts immediately.
-            }
-        }
-    }
 }
 
 extension View {

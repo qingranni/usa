@@ -44,11 +44,11 @@ extension Metrics {
     }
 
     /// Centered trip-overview row card — the collapse target for the card-swap
-    /// launch (matches the trip-list row: near full width, 118pt tall), parked in
+    /// launch (matches the trip-list row: near full width, 96pt tall), parked in
     /// the vertical middle of the screen over the near-black backdrop.
     var centerCardRect: CGRect {
         let w = size.width - 48
-        let h: CGFloat = 118
+        let h: CGFloat = 96
         return CGRect(x: (size.width - w) / 2, y: (H - h) / 2, width: w, height: h)
     }
 }

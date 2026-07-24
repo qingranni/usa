@@ -27,6 +27,46 @@ enum Kind: String, Hashable {
     }
 }
 
+/// The producer responsible for the result content and its layout policy.
+enum ResultSource: String, Hashable {
+    case narrative, mock, genUI
+}
+
+/// Top-level renderer selected by the producer. `blocks` preserves the ordered
+/// result grammar; specialized renderers are explicit rather than inferred from
+/// the resource kind.
+enum ResultComposition: String, Hashable {
+    case blocks
+    case packageShelves
+    case flightList
+}
+
+/// Visual treatment for cards inside a list or carousel. Placement remains the
+/// responsibility of `ResultBlock.Style`.
+enum ResultCardPresentation: String, Hashable {
+    case automatic
+    case destinationHero
+    case destinationCarousel
+    case lodging
+    case flight
+    case generic
+}
+
+/// Producer-selected map composition. Most result maps use the standard detent
+/// sheet; destinationCarousel is the full-map inspiration treatment with
+/// floating destination cards.
+enum ResultsMapLayout: String, Hashable {
+    case standard
+    case destinationCarousel
+}
+
+/// Producer-selected canvas chrome. The default layout remains shared across
+/// data sources; authored scenarios opt into a focused visual treatment.
+enum ResultsCanvasLayout: String, Hashable {
+    case standard
+    case mexicoOrientation
+}
+
 // MARK: - Leaf types
 
 /// One option as produced by the mock factories or the AI payload.
@@ -58,6 +98,15 @@ struct Option: Hashable {
     var city: String? = nil         // resolved property city, e.g. "Cancún"
     /// Stay total (nightly × nights), shown as the primary price on lodging cards.
     var totalPrice: String? = nil
+    // Package-specific merchandising fields.
+    var dateRange: String? = nil
+    var crossedOutPrice: String? = nil
+    var discountText: String? = nil
+    var nights: Int? = nil
+    var travelers: Int? = nil
+    // Flight merchandising extras.
+    var aircraft: String? = nil     // "Boeing 777"
+    var flightNumber: String? = nil // "UA 507"
 }
 
 /// A single canvas/result card.
@@ -88,6 +137,15 @@ struct Card: Identifiable, Hashable {
     var city: String? = nil         // resolved property city, e.g. "Cancún"
     /// Stay total (nightly × nights), shown as the primary price on lodging cards.
     var totalPrice: String? = nil
+    // Package-specific merchandising fields.
+    var dateRange: String? = nil
+    var crossedOutPrice: String? = nil
+    var discountText: String? = nil
+    var nights: Int? = nil
+    var travelers: Int? = nil
+    // Flight merchandising extras.
+    var aircraft: String? = nil     // "Boeing 777"
+    var flightNumber: String? = nil // "UA 507"
     /// Stable shared-element identity for morphs.
     var layoutId: String
 
@@ -111,11 +169,16 @@ struct Card: Identifiable, Hashable {
 /// (or the mock) composes: an intro paragraph, a section heading, a stack of
 /// hero cards, or a horizontal carousel.
 struct ResultBlock: Identifiable, Hashable {
-    enum Style: String, Hashable { case text, heading, cards, carousel }
+    enum Style: String, Hashable { case text, heading, highlight, cards, carousel }
     let id: String
     var style: Style
     var text: String = ""     // body (text) / heading / carousel title
     var cards: [Card] = []    // for .cards and .carousel
+    var cardPresentation: ResultCardPresentation = .automatic
+    /// Original server semantic component, retained so native presentation can
+    /// specialize without flattening the contract into generic text/cards.
+    var semanticType: String? = nil
+    var semanticProps: [String: JSONValue] = [:]
 }
 
 /// One stack of results (a refinement snapshot).
@@ -130,7 +193,7 @@ struct ResultSet: Identifiable, Hashable {
     var blocks: [ResultBlock] = []
 }
 
-enum ActivityType: String, Hashable { case compare, map }
+enum ActivityType: String, Hashable { case compare, map, conversation }
 
 /// One row of a side-by-side comparison.
 struct CompareHighlight: Hashable, Identifiable {
@@ -162,12 +225,13 @@ struct Comparison: Hashable {
     var versusTitle: String { "\(titleA) vs \(titleB)" }
 }
 
-/// A sub-action taken inside a thread (comparison or location/map question).
+/// A sub-action taken inside a thread (comparison, map, or conversation).
 struct Activity: Identifiable, Hashable {
     let id: String
     var type: ActivityType
     var subtitle: String
     var comparison: Comparison? = nil
+    var conversation: Conversation? = nil
 }
 
 /// How a thread appears in its parent (header glyph / hero image / intro line).
@@ -179,10 +243,147 @@ struct Preview: Hashable {
     var layoutId: String
 }
 
-struct Message: Hashable {
-    enum Role: String { case user, assistant }
+struct Message: Hashable, Sendable {
+    enum Role: String, Sendable { case user, assistant }
     var role: Role
     var text: String
+}
+
+enum ComposerRoute: String, Hashable, Sendable {
+    case question
+    case continueConversation
+    case newSearch
+    case refine
+    case compare
+    case map
+}
+
+enum ComposerSurface: String, Hashable, Sendable {
+    case home
+    case results
+    case inlineAnswer
+    case conversation
+}
+
+struct ComposerContext: Hashable, Sendable {
+    var surface: ComposerSurface
+    var threadID: String?
+    var title: String?
+    var summary: String?
+    var filters: [String] = []
+    var results: [String] = []
+    var messages: [Message] = []
+}
+
+struct ComposerRoutingResult: Hashable, Sendable {
+    var route: ComposerRoute
+    var title: String = ""
+    var answer: String = ""
+}
+
+struct Conversation: Hashable {
+    var title: String
+    var messages: [Message]
+}
+
+/// An assistant turn mid-arrival: a "thinking" shim while the answer resolves,
+/// then the text revealed word by word before it commits into the conversation.
+struct StreamingTurn: Equatable {
+    var fullText: String = ""
+    /// The portion revealed so far, kept as an `AttributedString` so Markdown
+    /// bold renders progressively as words arrive — revealing raw text and
+    /// letting SwiftUI re-parse `**…**` per tick makes the asterisks flash in
+    /// then vanish on each bolded phrase.
+    var revealed: AttributedString = AttributedString("")
+    var thinking: Bool = true
+}
+
+struct InlineAnswerDraft: Identifiable, Hashable {
+    let id: String
+    var originThreadID: String
+    var conversation: Conversation
+}
+
+/// Source-resolved canvas presentation. Views consume this contract instead of
+/// inferring layout from product names, titles, or card contents.
+struct ResultsPresentation: Hashable {
+    var showsMap: Bool = true
+    var showsFilters: Bool = true
+    var overlaySheet: Bool = true
+    var mapLayout: ResultsMapLayout = .standard
+    var canvasLayout: ResultsCanvasLayout = .standard
+    var filters: [String] = []
+    var refinements: [RefinementAction] = []
+    var map: ServerMapPresentation? = nil
+}
+
+/// Server continuation data retained on the thread that produced it. This is
+/// transport state only; decision policy remains owned by the backend.
+struct SearchContinuation: Hashable {
+    var sessionId: String?
+    var intentEvents: [ContinuationEvent] = []
+    var querySummary: String?
+}
+
+struct ContinuationEvent: Hashable {
+    var id: String
+    var type: String
+    var timestamp: Double
+    var field: String?
+    var previousValue: JSONValue?
+    var newValue: JSONValue?
+    var strength: String?
+    var source: String
+    var confidence: Double?
+    var rawInput: String?
+    var provenance: String?
+}
+
+enum RefinementActionKind: String, Hashable {
+    case selection
+    case query
+    case openComposer
+}
+
+/// A backend-provided confirmation, suggestion, or refinement affordance.
+struct RefinementAction: Identifiable, Hashable {
+    var id: String
+    var label: String
+    var field: String?
+    var value: JSONValue?
+    var query: String
+    var kind: RefinementActionKind
+    var required: Bool = false
+}
+
+struct DecisionPresentation: Hashable {
+    var completeness: String?
+    var stage: String?
+    var register: String?
+    var actions: [String] = []
+    var disambiguationLevel: String?
+    var templateKind: String?
+    var mapPolicy: String?
+    var compositionRecipe: String?
+    var compositionTone: String?
+    var guidanceIntensity: String?
+    var suggestionDensity: Double?
+    var foregroundAttributes: [String] = []
+    var promptPlacement: String?
+}
+
+struct ServerMapPin: Identifiable, Hashable {
+    var id: String
+    var latitude: Double
+    var longitude: Double
+    var label: String
+}
+
+struct ServerMapPresentation: Hashable {
+    var pins: [ServerMapPin]
+    var centerLatitude: Double?
+    var centerLongitude: Double?
+    var zoom: Double?
 }
 
 // MARK: - Thread node
@@ -192,17 +393,32 @@ struct ThreadNode: Identifiable, Hashable {
     var kind: Kind
     var title: String
     var generated: Bool = true
-    var preferences: [String] = []
+    var source: ResultSource = .mock
+    var composition: ResultComposition = .blocks
+    /// Optional deterministic scenario provenance used to resolve authored
+    /// follow-up content. Entry creation versus mutation remains AppStore policy.
+    var scenarioID: String? = nil
+    var scenarioStep: String? = nil
+    var presentation: ResultsPresentation = ResultsPresentation()
+    var continuation: SearchContinuation? = nil
+    var decision: DecisionPresentation? = nil
     var preview: Preview
     var resultSets: [ResultSet] = []
     var activities: [Activity] = []
     var messages: [Message] = []
     var resultsLabel: String? = nil
+    /// Home questions have no Results entry; their sole trip entry is chat.
+    var conversationOnly = false
 
     /// Latest result set's cards (data.js `activeCards`).
     var activeCards: [Card] { resultSets.last?.cards ?? [] }
     /// Latest result set's server-driven UI blocks (empty ⇒ render `activeCards`).
     var activeBlocks: [ResultBlock] { resultSets.last?.blocks ?? [] }
+    /// Semantic status/guidance/clarification blocks that must remain visible
+    /// when a specialized card renderer owns the rest of the layout.
+    var specializedSemanticBlocks: [ResultBlock] {
+        activeBlocks.filter { $0.semanticType != nil }
+    }
 
     /// The primary hero cards actually rendered at the top of the results — the
     /// first `.cards` block (falling back to the flat card list). These are the
@@ -235,6 +451,13 @@ struct ThreadPayload {
     var label: String
     var chip: String
     var options: [Option]
+    var source: ResultSource = .mock
+    var composition: ResultComposition = .blocks
+    var scenarioID: String? = nil
+    var scenarioStep: String? = nil
+    var presentation: ResultsPresentation = ResultsPresentation()
+    var continuation: SearchContinuation? = nil
+    var decision: DecisionPresentation? = nil
     /// Server-driven UI blocks for the result view (empty ⇒ mock synthesizes a
     /// default layout from `options`).
     var blocks: [BlockSpec] = []
@@ -246,9 +469,12 @@ struct BlockSpec {
     var style: ResultBlock.Style
     var text: String = ""
     var items: [Option] = []
+    var cardPresentation: ResultCardPresentation = .automatic
     /// Per-section image domain (flights/lodging/activities…) so a mixed response
     /// picks fitting imagery per block. Falls back to the thread's kind.
     var kind: Kind? = nil
+    var semanticType: String? = nil
+    var semanticProps: [String: JSONValue] = [:]
 }
 
 /// Unified result of "ask the assistant" — mirrors the React `{ reply, thread }`

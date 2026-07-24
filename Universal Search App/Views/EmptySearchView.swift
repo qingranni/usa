@@ -21,9 +21,11 @@ struct EmptySearchView: View {
     let metrics: Metrics
 
     @State private var showComposer = false
+    @State private var showFlightComposer = false
     @State private var showSettings = false
     @State private var showSearchPillShadow = true
     @Namespace private var composerZoom
+    @Namespace private var flightComposerZoom
 
     private let searchPillHeight: CGFloat = 66
 
@@ -51,9 +53,21 @@ struct EmptySearchView: View {
 
             homeNavigation
         }
+        .onAppear {
+            if ProcessInfo.processInfo.environment["OPEN_COMPOSER"] != nil {
+                store.composerText = ""
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showComposer = true }
+            }
+        }
         .fullScreenCover(isPresented: $showComposer) {
             HomeComposerCover(store: store, metrics: metrics)
                 .navigationTransition(.zoom(sourceID: "composer", in: composerZoom))
+        }
+        .fullScreenCover(isPresented: $showFlightComposer) {
+            FlightScopedComposerView(store: store)
+                .navigationTransition(
+                    .zoom(sourceID: "flightScopedComposer", in: flightComposerZoom)
+                )
         }
         .sheet(isPresented: $showSettings) {
             SettingsPanelView(store: store)
@@ -79,7 +93,7 @@ struct EmptySearchView: View {
                 .opacity(showSearchPillShadow ? 1 : 0)
 
             Button { present("") } label: {
-                Text("Where do you want to go?")
+                Text(Copy["search.placeholder"])
                     .font(.centra(size: 14, weight: .medium))
                     .foregroundStyle(Color.homeInk)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -119,17 +133,35 @@ struct EmptySearchView: View {
     private var lineOfBusinessChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                lineOfBusinessChip("Stays", asset: "home-lob-stays")
-                lineOfBusinessChip("Flights", asset: "home-lob-flights")
-                lineOfBusinessChip("Cars", asset: "home-lob-cars")
-                lineOfBusinessChip("Activities", asset: "home-lob-activities")
+                lineOfBusinessChip("Stays", asset: "home-lob-stays") {
+                    present("Stays")
+                }
+                lineOfBusinessChip("Flights", asset: "home-lob-flights") {
+                    Haptics.impact(.light)
+                    store.composerText = ""
+                    showFlightComposer = true
+                }
+                .matchedTransitionSource(
+                    id: "flightScopedComposer",
+                    in: flightComposerZoom
+                )
+                lineOfBusinessChip("Cars", asset: "home-lob-cars") {
+                    present("Cars")
+                }
+                lineOfBusinessChip("Activities", asset: "home-lob-activities") {
+                    present("Activities")
+                }
             }
             .padding(.horizontal, 32)
         }
     }
 
-    private func lineOfBusinessChip(_ title: String, asset: String) -> some View {
-        Button { present(title) } label: {
+    private func lineOfBusinessChip(
+        _ title: String,
+        asset: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             HStack(spacing: 10) {
                 Image(asset)
                     .resizable()
@@ -151,9 +183,9 @@ struct EmptySearchView: View {
 
     private var greeting: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Hi Rosa,")
+            Text(Copy["home.greetingName"])
                 .foregroundStyle(Color.homeInkMuted)
-            Text("Let's pick up where\nyou left off.")
+            Text(Copy["home.greetingPrompt"])
                 .foregroundStyle(Color.homeInk)
         }
         .font(.centra(size: 28, weight: .medium))
@@ -168,7 +200,7 @@ struct EmptySearchView: View {
         ZStack(alignment: .top) {
             Color.homeOffWhite
 
-            mallorcaHero
+            cancunHero
 
             VStack(alignment: .leading, spacing: 24) {
                 recentActivity
@@ -183,9 +215,9 @@ struct EmptySearchView: View {
         .frame(maxWidth: .infinity, alignment: .top)
     }
 
-    private var mallorcaHero: some View {
+    private var cancunHero: some View {
         ZStack(alignment: .topLeading) {
-            Image("home-mallorca-hero")
+            Image("home-cancun-hero")
                 .resizable()
                 .scaledToFill()
                 .frame(height: 500)
@@ -193,21 +225,21 @@ struct EmptySearchView: View {
                 .clipped()
 
             LinearGradient(
-                colors: [Color(red: 25 / 255, green: 30 / 255, blue: 23 / 255).opacity(0.75), .clear],
+                colors: [Color(red: 0, green: 70 / 255, blue: 149 / 255).opacity(0.75), .clear],
                 startPoint: .top,
                 endPoint: .bottom
             )
             .frame(height: 190)
 
             VStack(alignment: .leading, spacing: 12) {
-                Text("Mallorca trip")
+                Text("2025 Spring Break recap")
                     .font(.centra(size: 32, weight: .medium))
                     .tracking(-0.32)
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.5), radius: 15)
 
                 HStack(spacing: 8) {
-                    heroChip("March 14–22")
+                    heroChip("5 nights")
                     heroChip("3 people")
                 }
             }
@@ -243,31 +275,63 @@ struct EmptySearchView: View {
 
     private var recentActivity: some View {
         VStack(spacing: 8) {
-            recentActivityCard(
-                image: "home-mallorca-hotel",
-                title: "Mallorca hotels",
-                subtitle: "Exploring options"
-            )
-            recentActivityCard(
-                image: "home-thinking",
-                title: "Best beaches in Mallorca",
-                subtitle: "Conversation"
-            )
+            hotelActivityCard
+            flightActivityCard
         }
         .padding(.horizontal, 32)
     }
 
-    private func recentActivityCard(image: String, title: String, subtitle: String) -> some View {
-        Button { present(title) } label: {
+    private var hotelActivityCard: some View {
+        Button { present("Hard Rock Hotel Cancun") } label: {
             HStack(spacing: 20) {
-                recentActivityArtwork(image)
+                recentActivityArtwork("home-cancun-hotel")
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Hard Rock Hotel Cancun - All Inclusive")
+                        .font(.centra(size: 16, weight: .medium))
+                        .foregroundStyle(Color.homeInk)
+                        .lineLimit(2)
+
+                    HStack(spacing: 6) {
+                        Text("9.2")
+                            .font(.centra(size: 12, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 16)
+                            .background(
+                                Color(red: 12 / 255, green: 147 / 255, blue: 0),
+                                in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            )
+                        Text("Excellent")
+                            .font(.centra(size: 12))
+                            .foregroundStyle(Color(red: 25 / 255, green: 30 / 255, blue: 59 / 255))
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var flightActivityCard: some View {
+        Button { present("HOUS → CUN") } label: {
+            HStack(spacing: 20) {
+                Image("home-expedia-logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 48, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .frame(width: 86, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
+                    Text("HOUS → CUN")
                         .font(.centra(size: 16, weight: .medium))
                         .foregroundStyle(Color.homeInk)
                         .lineLimit(1)
-                    Text(subtitle)
+                    Text("Conversation")
                         .font(.centra(size: 16))
                         .foregroundStyle(Color.homeInk.opacity(0.5))
                 }
@@ -282,36 +346,17 @@ struct EmptySearchView: View {
     }
 
     private func recentActivityArtwork(_ image: String) -> some View {
-        ZStack {
-            if image == "home-thinking" {
-                Image(image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 68, height: 68)
-
-                HStack(spacing: 5) {
-                    ForEach(0..<3, id: \.self) { _ in
-                        Circle()
-                            .fill(Color.homeInk)
-                            .frame(width: 4.5, height: 4.5)
-                    }
-                }
-                .offset(y: -1)
-            } else {
-                Image(image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 86, height: 86)
-                    .clipped()
-            }
-        }
-        .frame(width: 86, height: 86)
-        .background(Color.homeOffWhite)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.homeInk.opacity(0.05), lineWidth: 1)
-        )
+        Image(image)
+            .resizable()
+            .scaledToFill()
+            .frame(width: 86, height: 86)
+            .clipped()
+            .background(Color.homeOffWhite)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.homeInk.opacity(0.05), lineWidth: 1)
+            )
     }
 
     // MARK: - Below-the-fold content
@@ -442,23 +487,45 @@ struct EmptySearchView: View {
 
     private var homeNavigation: some View {
         ZStack(alignment: .top) {
-            LinearGradient(
-                colors: [.white.opacity(0), .white.opacity(0.1)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .background(.ultraThinMaterial.opacity(0.12))
+            // Progressive blur so content dissolves as it scrolls under the bar.
+            // The material is masked to fade in toward the bottom, with only a
+            // light white tint over it (0 → 0.15) so the blur stays visible.
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask(
+                    LinearGradient(
+                        colors: [.clear, .white.opacity(0.6), .white],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay(
+                    LinearGradient(
+                        colors: [.white.opacity(0), .white.opacity(0.15)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .allowsHitTesting(false)
 
-            HStack(spacing: 0) {
+            HStack(spacing: 4) {
                 navigationButton("house", selected: true)
                 navigationButton("point.topleft.down.to.point.bottomright.curvepath", selected: false)
                 navigationButton("person.crop.circle", selected: false)
             }
             .padding(4)
-            .background(.ultraThinMaterial, in: Capsule())
+            .background(
+                LinearGradient(
+                    colors: [.white.opacity(0), .white.opacity(0.5)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                in: Capsule()
+            )
             .background(Color.homeOffWhite.opacity(0.9), in: Capsule())
+            .background(.ultraThinMaterial, in: Capsule())
             .overlay(Capsule().strokeBorder(.white, lineWidth: 1))
-            .shadow(color: Color.homeInk.opacity(0.08), radius: 16, y: 12)
+            .shadow(color: Color.homeInk.opacity(0.08), radius: 32, y: 12)
             .padding(.top, 44)
         }
         .frame(height: 133)
@@ -474,8 +541,10 @@ struct EmptySearchView: View {
         } label: {
             EGDSIcon(systemName, size: 22)
                 .foregroundStyle(selected ? Color.white : Color.homeInk)
-                .frame(width: 44, height: 44)
-                .background(selected ? Color.homeInk : Color.clear, in: Circle())
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+                .background(selected ? Color.homeInk : Color.clear, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.05), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(

@@ -3,10 +3,9 @@
 //  Universal Search App
 //
 //  The flights results canvas (Figma "iPhone 16 & 17 Pro – 96"): a map hero with
-//  the route arc, a centered route title, filter chips, a "Picked for you"
-//  section, and the redesigned flight cards (times · route · airlines · price).
+//  the route arc and redesigned flight cards (times · route · airlines · price).
 //  Rendered by CurtainSheet for `.flights` threads in place of the generic block
-//  layout.
+//  layout. Shared query replay and filters are owned by ResultsCanvasContent.
 //
 
 import SwiftUI
@@ -45,7 +44,6 @@ struct FlightRoute {
 
 struct FlightsResultsView: View {
     let thread: ThreadNode
-    let metrics: Metrics
 
     /// The main hero flight cards.
     private var flights: [Card] {
@@ -58,39 +56,29 @@ struct FlightsResultsView: View {
     private var moreFlights: [Card] {
         thread.activeBlocks.first { $0.style == .carousel }?.cards ?? []
     }
-    private var route: FlightRoute? { FlightRoute(flights.first?.title) }
     private var summary: String {
-        thread.activeBlocks.first { $0.style == .text }?.text ?? ""
-    }
-    private var routeTitle: String {
-        if let r = route { return "Flexible flights \(r.originCity) to \(r.destCity)" }
-        return thread.title
+        thread.activeBlocks.first { $0.style == .text && $0.semanticType == nil }?.text ?? ""
     }
 
     var body: some View {
-        // The live Apple Map now sits behind the sheet (RootView), revealed by
-        // dragging the detent sheet down — so this view is just the white sheet
-        // content. The sheet starts at the detent top, so the top padding only has
-        // to clear the drag grabber (owned by CurtainSheet).
         VStack(alignment: .leading, spacing: 24) {
-            Text(routeTitle)
-                .font(.centra(size: 16, weight: .medium))
-                .foregroundStyle(Theme.figmaInk)
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            chips
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Picked for you")
+            VStack(alignment: .leading, spacing: 8) {
+                Text(Copy["results.flights.heading"])
                     .font(.centra(size: 20, weight: .medium))
                     .tracking(-0.2)
                     .foregroundStyle(Theme.figmaInk)
                 if !summary.isEmpty {
-                    Text(summary)
-                        .font(.centra(size: 16))
+                    (Text(summary + " ")
                         .foregroundStyle(Theme.figmaInk.opacity(0.5))
+                     + Text(Copy["results.flights.sortByPrice"])
+                        .foregroundStyle(Theme.figmaInk.opacity(0.75))
+                        .underline())
+                        .font(.centra(size: 16))
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                Text(Copy["results.flights.lapInfantFare"])
+                    .font(.centra(size: 14))
+                    .foregroundStyle(Theme.figmaInk.opacity(0.5))
             }
 
             VStack(spacing: 16) {
@@ -100,7 +88,7 @@ struct FlightsResultsView: View {
             }
 
             if !moreFlights.isEmpty {
-                Text(moreHeading ?? "More flights")
+                Text(moreHeading ?? "More options")
                     .font(.centra(size: 20, weight: .medium))
                     .tracking(-0.2)
                     .foregroundStyle(Theme.figmaInk)
@@ -113,41 +101,7 @@ struct FlightsResultsView: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(.top, 28)
-        .padding(.bottom, 120)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var chips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle().fill(Color(red: 243 / 255, green: 242 / 255, blue: 242 / 255).opacity(0.8))
-                    EGDSIcon("slider.horizontal.3", size: 18)
-                        .foregroundStyle(Theme.figmaInk)
-                }
-                .frame(width: 40, height: 40)
-
-                ForEach(chipLabels, id: \.self) { label in
-                    Text(label)
-                        .font(.centra(size: 14))
-                        .foregroundStyle(Theme.figmaInk)
-                        .padding(.horizontal, 16)
-                        .frame(height: 40)
-                        .background(Color(red: 243 / 255, green: 242 / 255, blue: 242 / 255).opacity(0.8),
-                                    in: Capsule())
-                }
-            }
-        }
-    }
-
-    private var chipLabels: [String] {
-        if !thread.preferences.isEmpty { return thread.preferences }
-        var labels: [String] = ["Seats together"]
-        if let trip = flights.first?.tripType { labels.append(trip) }
-        if let cabin = flights.first?.cabin { labels.append(cabin) }
-        labels.append("2 adults, 1 infant")
-        return labels
     }
 }
 
@@ -157,25 +111,80 @@ struct FlightResultCard: View {
     let card: Card
     var compact: Bool = false
 
+    @State private var saved = false
+
     private var route: FlightRoute? { FlightRoute(card.title) }
 
     var body: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 24) {
-                topRow
-                metaRow
-            }
-            Divider().overlay(Theme.figmaInk.opacity(0.1))
-            priceRow
+        VStack(alignment: .leading, spacing: 20) {
+            header
+            timesRow
+            bottomRow
         }
-        .padding(16)
-        .frame(width: compact ? 320 : nil)
+        .padding(20)
+        .frame(width: compact ? 320 : nil, alignment: .leading)
         .background(Color(red: 0xF8 / 255, green: 0xF8 / 255, blue: 0xF8 / 255),
                     in: RoundedRectangle(cornerRadius: 24))
     }
 
-    private var topRow: some View {
-        VStack(spacing: 4) {
+    // MARK: - Header (avatar · name · aircraft line · save)
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            if let logo = card.logoURLs.first {
+                LogoImage(logo: logo)
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(airlineName)
+                    .font(.centra(size: 16, weight: .medium))
+                    .foregroundStyle(Theme.figmaInk)
+                if !metaLine.isEmpty {
+                    Text(metaLine)
+                        .font(.centra(size: 13))
+                        .foregroundStyle(Theme.figmaInk.opacity(0.6))
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            Button {
+                Haptics.impact(.light)
+                withAnimation(Theme.fade) { saved.toggle() }
+            } label: {
+                EGDSIcon(saved ? "favorite" : "favorite_border", size: 22)
+                    .foregroundStyle(saved ? Theme.figmaInk : Theme.figmaInk.opacity(0.7))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(saved ? "Saved" : "Save flight")
+        }
+    }
+
+    private var airlineName: String {
+        guard let a = card.airlines.first else { return "Flight" }
+        switch a {
+        case "United":    return "United Airlines"
+        case "Delta":     return "Delta Air Lines"
+        case "American":  return "American Airlines"
+        case "JetBlue":   return "JetBlue Airways"
+        case "Spirit":    return "Spirit Airlines"
+        case "Alaska":    return "Alaska Airlines"
+        case "Southwest": return "Southwest Airlines"
+        default:          return a.localizedCaseInsensitiveContains("air") ? a : "\(a) Airlines"
+        }
+    }
+
+    /// "Economy • Boeing 777 • UA 507" — omits any missing piece.
+    private var metaLine: String {
+        [card.cabin, card.aircraft, card.flightNumber]
+            .compactMap { $0 }
+            .joined(separator: " • ")
+    }
+
+    // MARK: - Times / route
+
+    private var timesRow: some View {
+        VStack(spacing: 6) {
             HStack(spacing: 16) {
                 Text(card.departTime ?? "")
                     .font(.centra(size: 24, weight: .medium))
@@ -187,19 +196,17 @@ struct FlightResultCard: View {
             }
             .foregroundStyle(Theme.figmaInk)
 
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(route.map { "\($0.originCity) (\($0.originCode))" } ?? "")
+            HStack(spacing: 12) {
+                Text(route?.originCode ?? "")
                     .font(.centra(size: 14, weight: .medium))
-                VStack(alignment: .leading, spacing: 2) {
-                    if let dur = card.duration {
-                        Text(dur).font(.centra(size: 14)).opacity(0.7)
-                    }
-                    if let stops = card.stops {
-                        Text(stops).font(.centra(size: 14)).opacity(0.7)
-                    }
+                Spacer()
+                if let dur = card.duration {
+                    Text(dur)
+                        .font(.centra(size: 14))
+                        .foregroundStyle(Theme.figmaInk.opacity(0.6))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Text(route.map { "\($0.destCity) (\($0.destCode))" } ?? "")
+                Spacer()
+                Text(route?.destCode ?? "")
                     .font(.centra(size: 14, weight: .medium))
             }
             .foregroundStyle(Theme.figmaInk)
@@ -218,53 +225,73 @@ struct FlightResultCard: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var metaRow: some View {
-        HStack(spacing: 24) {
-            VStack(alignment: .leading, spacing: 2) {
-                if !card.airlines.isEmpty {
-                    Text(card.airlines.joined(separator: ", "))
-                }
-                if let cabin = card.cabin {
-                    Text(cabin)
-                }
-            }
-            .font(.centra(size: 14))
-            .foregroundStyle(Theme.figmaInk.opacity(0.7))
-            .frame(maxWidth: .infinity, alignment: .leading)
+    // MARK: - Stops · amenities · price
 
-            HStack(spacing: 12) {
-                ForEach(card.logoURLs.prefix(2), id: \.self) { logo in
-                    LogoImage(logo: logo)
-                        .frame(width: 40, height: 40)
+    private var bottomRow: some View {
+        HStack(alignment: .bottom, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                if let stops = card.stops {
+                    Text(stops)
+                        .font(.centra(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.figmaInk)
                 }
+                if let layover = layoverText {
+                    Text(layover)
+                        .font(.centra(size: 13))
+                        .foregroundStyle(Theme.figmaInk.opacity(0.6))
+                }
+                amenityStrip
+            }
+            Spacer(minLength: 0)
+            priceColumn
+        }
+    }
+
+    /// Layover detail only when the flight isn't nonstop; sourced from the
+    /// option's highlights (fixtures carry no structured layover today).
+    private var layoverText: String? {
+        guard let stops = card.stops,
+              !stops.localizedCaseInsensitiveContains("nonstop") else { return nil }
+        return card.highlights
+    }
+
+    private var amenityStrip: some View {
+        HStack(spacing: 12) {
+            ForEach(["suitcase.fill", "wifi", "powerplug.fill", "play.rectangle.fill"], id: \.self) { name in
+                Image(systemName: name)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.figmaInk.opacity(0.55))
             }
         }
     }
 
-    private var priceRow: some View {
-        HStack(spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+    private var priceColumn: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            if let discount = card.discountText {
+                Text(discount)
+                    .font(.centra(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.figmaInk)
+                    .padding(.horizontal, 10)
+                    .frame(height: 20)
+                    .background(Color(red: 253 / 255, green: 219 / 255, blue: 50 / 255), in: Capsule())
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if let old = card.crossedOutPrice {
+                    Text(old)
+                        .font(.centra(size: 15))
+                        .foregroundStyle(Theme.figmaInk.opacity(0.5))
+                        .strikethrough()
+                }
                 if let price = card.price {
                     Text(price)
                         .font(.centra(size: 24, weight: .medium))
                         .tracking(-0.48)
                         .foregroundStyle(Theme.figmaInk)
                 }
-                if let trip = card.tripType {
-                    Text(trip)
-                        .font(.centra(size: 14))
-                        .foregroundStyle(Theme.figmaInk.opacity(0.7))
-                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text("Details")
-                .font(.centra(size: 14, weight: .medium))
-                .tracking(-0.25)
-                .foregroundStyle(Theme.figmaInk)
-                .padding(.horizontal, 16)
-                .frame(height: 36)
-                .background(Color(white: 0.83).opacity(0.5), in: Capsule())
+            Text("\(card.tripType ?? Copy["results.flights.roundTrip"])\(Copy["results.flights.perTravelerSuffix"])")
+                .font(.centra(size: 13))
+                .foregroundStyle(Theme.figmaInk.opacity(0.6))
         }
     }
 }

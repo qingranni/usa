@@ -15,13 +15,15 @@ enum Theme {
     /// #0C0E1C — primary dark ink / dark background.
     static let ink = Color(red: 12 / 255, green: 14 / 255, blue: 28 / 255)
 
-    /// #191E3B — the navy ink used on the light "query playback" card (Figma
+    /// #0C0E1C — the navy ink used on the light "query playback" card (Figma
     /// 1214-13455). Slightly lighter than `ink`; text/icons on white surfaces.
-    static let figmaInk = Color(red: 25 / 255, green: 30 / 255, blue: 59 / 255)
-    /// rgba(25,30,59,0.5) — muted navy ("Refine", secondary text on white).
+    static let figmaInk = Color(red: 12 / 255, green: 14 / 255, blue: 28 / 255)
+    /// rgba(12,14,28,0.5) — muted navy ("Refine", secondary text on white).
     static let figmaInkMuted = figmaInk.opacity(0.5)
-    /// rgba(25,30,59,0.05) — filter-chip / icon-button fill on white.
+    /// rgba(12,14,28,0.05) — filter-chip / icon-button fill on white.
     static let figmaChipFill = figmaInk.opacity(0.05)
+    /// #F9F7F6 — solid warm off-white for the canvas/result filter chips.
+    static let canvasFilterChipFill = Color(red: 0xF9 / 255, green: 0xF7 / 255, blue: 0xF6 / 255)
 
     /// #F7F4F3 — the trip overview's list-row surface (warm off-white).
     static let cardItem = Color(red: 0xF7 / 255, green: 0xF4 / 255, blue: 0xF3 / 255)
@@ -87,9 +89,17 @@ enum Theme {
     /// it accelerates hard and settles fast with no overshoot, so live-map morphs
     /// spend less time mid-transition (less visible MapKit tile jitter).
     static let springMorph = Animation.timingCurve(0.75, 0, 0, 1, duration: 0.75)
+    /// The Mexico → Cancun map fly (beat 1 of the card→packages transition). Same
+    /// cubic-bezier as `springMorph` but a touch slower so the shift reads as a
+    /// deliberate, cinematic beat before the pins settle in.
+    static let mapFly = Animation.timingCurve(0.75, 0, 0, 1, duration: 1.0)
     /// Composer-initiated card swap. Same curve as the main morph, stretched 3x
     /// so the outgoing/incoming cards read more deliberately during loading.
     static let springMorphCardSwap = Animation.timingCurve(0.75, 0, 0, 1, duration: 1.5)
+    /// Package-detail hero morph. A long, gentle ease (soft in, long settle) so
+    /// the image glides into place and the windowed content beats read one after
+    /// another. Slow and cinematic by design; beats are spaced across the driver.
+    static let springDetailMorph = Animation.timingCurve(0.4, 0.0, 0.18, 1.0, duration: 1.55)
     /// Soft blur that peaks mid-morph and resolves to sharp endpoints.
     static let morphBlurRadius: CGFloat = 3.5
     /// The main canvas surface can carry a little more blur because it is the

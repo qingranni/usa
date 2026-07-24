@@ -1,14 +1,36 @@
 {
   "search": {
-    "placeholder": "Search or ask",
-    "followUp": "Ask or follow-up",
+    "placeholder": "Where do you want to go?",
+    "followUp": "Ask anything",
     "thinking": "Thinking…",
     "searching": "Searching…"
+  },
+  "voice": {
+    "listening": "Listening…"
+  },
+  "home": {
+    "greetingName": "Hi Rosa,",
+    "greetingPrompt": "Ready to plan your\nspring break getaway?",
+    "suggestions": {
+      "trip": {
+        "prompt": "Spring break with the kids",
+        "subtitle": "Plan this year’s trip"
+      },
+      "stay": {
+        "prompt": "All-inclusive beach resort",
+        "subtitle": "Find your perfect stay"
+      },
+      "escape": {
+        "prompt": "Weekend getaway near me",
+        "subtitle": "Plan a quick escape"
+      }
+    }
   },
   "trip": {
     "title": "SOMETHING",
     "dateChip": "March 8–12 (±2)",
-    "peopleChip": "3 people"
+    "peopleChip": "3 people",
+    "overviewHeading": "Activity"
   },
   "sections": {
     "lodging": {
@@ -34,7 +56,9 @@
   },
   "overview": {
     "resultsHeading": "Results",
+    "searchingLabel": "Searching",
     "comparingHeading": "Comparing",
+    "exploringLabel": "Exploring",
     "conversationLabel": "Conversation",
     "refineLabel": "Refine",
     "compareOnLabel": "Compare on"
@@ -45,5 +69,157 @@
   },
   "actions": {
     "removeFromTrip": "Remove from trip"
+  },
+  "results": {
+    "pricePrefix": "from",
+    "priceAvgCaption": "avg for 5 nights and 3 travelers",
+    "includesTaxesAndFees": "Includes taxes and fees",
+    "perNightSuffix": "/night",
+    "loadingResults": "Loading results",
+    "standoutFallback": "A standout option for this trip",
+    "flights": {
+      "heading": "Top departing flights",
+      "sortByPrice": "Sort by price instead",
+      "lapInfantFare": "Lap infant fare applied",
+      "nonstop": "Nonstop",
+      "flightsSuffix": " flights",
+      "roundTrip": "Round trip",
+      "perTravelerSuffix": " per traveler"
+    },
+    "packages": {
+      "atAGlanceSuffix": " at a glance →",
+      "discoveryTitle": "Cancun at a glance",
+      "discoverySubtitle": "Get familiar with the area"
+    },
+    "vacations": {
+      "discoveryTitle": "Can’t decide?",
+      "discoverySubtitle": "Let us help you dream"
+    }
+  },
+  "clusters": {
+    "lodging": {
+      "heading": "Places to stay",
+      "description": "Hotel and lodging searches collected for easy comparison."
+    },
+    "flights": {
+      "heading": "Flights",
+      "description": "Flight searches and route options for this trip."
+    },
+    "cars": {
+      "heading": "Getting around",
+      "description": "Car searches and transport options grouped together."
+    },
+    "activities": {
+      "heading": "Things to do",
+      "description": "Activity searches and experiences worth revisiting."
+    },
+    "compare": {
+      "heading": "Comparisons",
+      "description": "Side-by-side decisions you explored during planning."
+    },
+    "map": {
+      "heading": "Follow-ups",
+      "description": "Questions and map explorations connected to your searches."
+    },
+    "conversation": {
+      "heading": "Conversations",
+      "description": "Travel questions and advice you explored along the way."
+    },
+    "other": {
+      "heading": "Trip ideas",
+      "description": "Destination and planning searches with a shared theme."
+    },
+    "recent": {
+      "heading": "Latest activity",
+      "description": "Your most recent searches and planning steps."
+    },
+    "earlier": {
+      "heading": "Earlier activity",
+      "description": "Previous searches from this trip."
+    },
+    "related": {
+      "heading": "Related activity",
+      "description": "Searches and follow-ups grouped by type."
+    }
+  },
+  "narrative": {
+    "replies": {
+      "useCurrentOptions": "I’ll use the current narrative options.",
+      "packageRefinement": "Here are beachfront options with dedicated spaces for teens and seats together."
+    },
+    "orientation": {
+      "title": "Mexico beach destinations",
+      "heading": "Explore the best of Mexico",
+      "summary": "From Cancún’s energy to Puerto Vallarta’s laid-back charm, Mexico’s beach towns deliver for teens and stay under budget. Which one is calling you?",
+      "moreHeading": "More Mexico beach bliss",
+      "moreText": "Here are a few more places within your budget to consider",
+      "alternateHeading": "Not Mexico, but still beachy fun.",
+      "alternateText": "Sun and surf with a different vibe. These resorts are closer to Houston and may cost less.",
+      "filters": ["Mexico", "Week of Mar 14", "3 travelers", "up to $5,000", "beach"],
+      "destinationBlurbs": {
+        "cancun": "Cancun has the most teen-friendly activities in your budget, but has a loud and busy nightlife scene that may not be ideal for your teens.",
+        "puertoVallarta": "Puerto Vallarta pairs a laid-back beach atmosphere with family-friendly dining and a calmer pace for evenings together.",
+        "playaDelCarmen": "Playa del Carmen offers walkable beaches, activities, and shopping with easy access to the Riviera Maya."
+      },
+      "moreOptions": {
+        "sanPancho": {
+          "title": "San Pancho",
+          "detail": "Laid-back surf village nestled between jungle and sea"
+        },
+        "islaHolbox": {
+          "title": "Isla Holbox",
+          "detail": "Pristine island of turquoise waters and flamingos"
+        }
+      },
+      "alternateOptions": {
+        "montegoBay": {
+          "title": "Montego Bay",
+          "detail": "Laid-back surf village nestled between jungle and sea"
+        },
+        "destin": {
+          "title": "Destin",
+          "detail": "Laid-back surf village nestled between jungle and sea"
+        }
+      }
+    },
+    "packages": {
+      "title": "Cancun package options",
+      "heading": "Top Cancun packages for you",
+      "summary": "These budget-friendly bundles feature stays that cater to teens.",
+      "filters": ["Cancun", "Week of Mar 14", "3 travelers", "up to $5,000", "beach"],
+      "resortsHeading": "More Cancun resorts to explore",
+      "resortsText": "Beachfront stays with room for the whole family.",
+      "flightsHeading": "Flights only",
+      "flightsText": "Nonstop options that stay within your budget."
+    },
+    "refinedPackages": {
+      "title": "Beachfront Cancun options",
+      "heading": "Beachfront options with teen spaces",
+      "summary": "Got it. These resorts are right on the beach and have dedicated spaces or clubs just for teens.",
+      "filters": ["beachfront", "2-bed or suite", "seats together", "Week of Mar 14–22", "3 travelers", "up to $5,000"],
+      "heroTitle": "Hyatt Ziva",
+      "heroDescription": "Beachfront all-inclusive, teen pool and waterslide, 3 restaurants. Teens have their own space.",
+      "heroCrossedPrice": "$1,058"
+    },
+    "hyattDetail": {
+      "title": "Hyatt Ziva + Flight",
+      "summary": "Two connected rooms give everyone a little more space while keeping the family close together.",
+      "reviewsHeading": "What families with teens say",
+      "reviewsLead": "Teens loved the waterslide and stayed entertained while we relaxed. Beach is calm — no big waves to worry about. Rooms are spacious enough for the family.",
+      "activitiesHeading": "Activities nearby",
+      "filters": ["Mar 15–21", "3 travelers", "Seats together"]
+    },
+    "flights": {
+      "title": "Houston to Cancun flights",
+      "summary": "Sorted for good prices and convenient times — like your past family visits.",
+      "label": "Flights for your package",
+      "filters": ["3 travelers", "Nonstop", "HOU → CUN", "Economy"]
+    },
+    "activities": {
+      "title": "Activities near Hyatt Ziva Cancun",
+      "summary": "Fun nearby activities for Rosa and the teens.",
+      "label": "Activities nearby",
+      "filters": ["Cancun", "Teen friendly", "Near the beach"]
+    }
   }
 }

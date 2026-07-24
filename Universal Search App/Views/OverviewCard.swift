@@ -17,8 +17,13 @@ struct OverviewCard: View {
     let metrics: Metrics
 
     private var comparison: Comparison? { store.openComparison }
-    private var heading: String { comparison != nil ? Copy["overview.comparingHeading"] : Copy["overview.resultsHeading"] }
-    private var title: String { comparison?.versusTitle ?? thread.title }
+    private var conversation: Conversation? { store.openConversation }
+    private var heading: String {
+        if comparison != nil { return Copy["overview.comparingHeading"] }
+        if conversation != nil { return Copy["overview.conversationLabel"] }
+        return Copy["overview.resultsHeading"]
+    }
+    private var title: String { conversation?.title ?? comparison?.versusTitle ?? thread.title }
 
     /// The open entry's trip-list row, measured up front. During a card-swap
     /// launch it retargets to the centered card so the collapsed title lands in
@@ -41,6 +46,7 @@ struct OverviewCard: View {
                     heading: heading,
                     title: title,
                     images: thread.fanAssets,
+                    isConvo: conversation != nil,
                     isLogo: thread.fanIsLogo
                 )
                 .frame(width: slot.width, height: slot.height, alignment: .leading)

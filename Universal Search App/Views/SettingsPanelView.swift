@@ -14,6 +14,18 @@ struct SettingsPanelView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Data") {
+                    NavigationLink {
+                        DataSourceSettingsView(store: store)
+                    } label: {
+                        settingsRow(
+                            icon: "doc.on.doc",
+                            title: "Data sources",
+                            subtitle: dataSourceSummary
+                        )
+                    }
+                }
+
                 Section("Experience") {
                     NavigationLink {
                         DotGridPlaygroundView(showsDismissButton: false)
@@ -62,6 +74,10 @@ struct SettingsPanelView: View {
         .tint(Theme.figmaInk)
     }
 
+    private var dataSourceSummary: String {
+        store.assistantSourceMode.title
+    }
+
     private func settingsRow(
         icon: String,
         title: String,
@@ -83,6 +99,76 @@ struct SettingsPanelView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct DataSourceSettingsView: View {
+    @Bindable var store: AppStore
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(AssistantSourceMode.allCases) { source in
+                    sourceOption(source)
+                }
+
+                if store.assistantSourceMode == .genUI {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("Embedded runtime", systemImage: "iphone.and.arrow.forward")
+                            .font(.centra(size: 15, weight: .medium))
+                            .foregroundStyle(Theme.figmaInk)
+                        Text("Intent parsing and search run in the app using direct GPT and MCP connectivity.")
+                            .font(.centra(size: 13))
+                            .foregroundStyle(Theme.figmaInkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Label("Live providers with explicit fixture fallback", systemImage: "checkmark.shield")
+                            .font(.centra(size: 13))
+                            .foregroundStyle(Theme.figmaInkMuted)
+                    }
+                    .padding(.vertical, 4)
+                }
+            } footer: {
+                Text("Narrative + mock preserves authored golden paths and local mock results. Gen-UI keeps provider capability and fallback status visible in its results.")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .navigationTitle("Data sources")
+        .navigationBarTitleDisplayMode(.inline)
+        .background(Theme.cardItem)
+    }
+
+    private func sourceOption(_ source: AssistantSourceMode) -> some View {
+        Button {
+            store.assistantSourceMode = source
+        } label: {
+            HStack(spacing: 14) {
+                EGDSIcon(source.icon, size: 18)
+                    .foregroundStyle(Theme.figmaInk)
+                    .frame(width: 36, height: 36)
+                    .background(Theme.figmaChipFill, in: RoundedRectangle(cornerRadius: 10))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(source.title)
+                        .font(.centra(size: 16, weight: .medium))
+                        .foregroundStyle(Theme.figmaInk)
+                    Text(source.subtitle)
+                        .font(.centra(size: 13))
+                        .foregroundStyle(Theme.figmaInkMuted)
+                }
+
+                Spacer()
+
+                if store.assistantSourceMode == source {
+                    EGDSIcon("checkmark", size: 16)
+                        .foregroundStyle(Theme.figmaInk)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(source.title)
+        .accessibilityHint(source.subtitle)
+        .accessibilityAddTraits(store.assistantSourceMode == source ? .isSelected : [])
     }
 }
 

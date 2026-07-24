@@ -20,6 +20,7 @@ struct GlassPill: View {
     /// Placeholder shown while `loading`. Defaults to the generic "Thinking…";
     /// the homepage launch pill overrides this with "Searching…".
     var loadingText: String = Copy["search.thinking"]
+    var promptText: String? = nil
     let onSend: (String) -> Void
 
     @State private var text = ""
@@ -58,7 +59,7 @@ struct GlassPill: View {
 
     private var prompt: Text {
         let s = loading ? loadingText
-                        : (isEmpty ? Copy["search.placeholder"] : Copy["search.followUp"])
+                        : (promptText ?? (isEmpty ? Copy["search.placeholder"] : Copy["search.followUp"]))
         return Text(s).foregroundColor(isDark ? Theme.darkTextMuted : Theme.inkMuted)
     }
 
@@ -87,23 +88,8 @@ private struct GlassBackground: ViewModifier {
                 )
                 .overlay(Capsule().strokeBorder(Color.white.opacity(0.05), lineWidth: 1))
         } else {
-            // Light frosted glass: blurred material + a faint white→blue gradient
-            // tint (matches v1.css --v1-glass-fill). Chosen over iOS 26
-            // `.glassEffect()`, which renders heavy/gray over the white empty
-            // screen; the material reads lighter and closer to the Figma frost.
             content
-                .background {
-                    ZStack {
-                        Capsule().fill(.ultraThinMaterial)
-                        Capsule().fill(
-                            LinearGradient(
-                                colors: [Theme.glassTint.opacity(0.25), Theme.glassTint.opacity(0.125)],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
-                    }
-                }
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.8), lineWidth: 1))
+                .fauxGlass(in: Capsule())
                 .shadow(color: Theme.pillGlow, radius: 5, x: 0, y: 1)
         }
     }

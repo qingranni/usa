@@ -8,13 +8,6 @@
 
 import Foundation
 
-/// A query chip shown in the thread's split panel ("Hotels in [Miami] …").
-struct QueryChip: Hashable, Identifiable {
-    var label: String
-    var icon: String?
-    var id: String { label }
-}
-
 enum Mock {
 
     // MARK: - regex helper
@@ -89,25 +82,83 @@ enum Mock {
             card.tripType = o.tripType
             card.airlines = o.airlines
             card.highlights = o.highlights
+            card.rating = o.rating
+            card.reviewCount = o.reviewCount
+            card.city = o.city
+            card.totalPrice = o.totalPrice
+            card.dateRange = o.dateRange
+            card.crossedOutPrice = o.crossedOutPrice
+            card.discountText = o.discountText
+            card.nights = o.nights
+            card.travelers = o.travelers
+            card.aircraft = o.aircraft
+            card.flightNumber = o.flightNumber
         }
         // Lodging: guarantee the redesigned card's fields. Use real values from
         // the baked dataset when present, else synthesize deterministically so
         // agent-driven / mock hotels look identical to the baked ones.
         if kind == .lodging {
-            if let r = option?.rating {
-                card.rating = r
-                card.reviewCount = option?.reviewCount
-            } else {
+            if card.rating == nil {
                 let synth = synthReview(title)
                 card.rating = synth.score
                 card.reviewCount = synth.count
             }
-            card.city = option?.city ?? cityHint
-            if let nightly = nightlyValue(price: resolvedPrice, option: option) {
+            card.city = card.city ?? cityHint
+            if card.totalPrice == nil,
+               let nightly = nightlyValue(price: resolvedPrice, option: option) {
                 card.totalPrice = currency(nightly * stayNights)
             }
         }
+        // Flights: guarantee the redesigned card's fields. Prefer baked values,
+        // else synthesize deterministically so mock/agent flights look identical
+        // to the authored ones (aircraft, flight number, and a discount badge).
+        if kind == .flights {
+            let synth = synthFlightMeta(title + (card.airlines.first ?? ""))
+            if card.aircraft == nil { card.aircraft = synth.aircraft }
+            if card.flightNumber == nil {
+                let code = airlineCode(card.airlines.first)
+                card.flightNumber = "\(code) \(synth.flightNumber)"
+            }
+            if card.discountText == nil, card.crossedOutPrice == nil,
+               let value = option?.priceValue ?? intFromPrice(resolvedPrice) {
+                let original = Int(Double(value) / (1.0 - Double(synth.discountPct) / 100.0))
+                card.crossedOutPrice = currency(original)
+                card.discountText = "\(synth.discountPct)% Off"
+            }
+        }
         return card
+    }
+
+    /// Deterministic aircraft / flight-number / discount from a stable hash —
+    /// keeps synthesized flight merchandising consistent across rebuilds.
+    private static func synthFlightMeta(_ seed: String) -> (aircraft: String, flightNumber: Int, discountPct: Int) {
+        var h: UInt64 = 1469598103934665603
+        for b in seed.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
+        let aircraft = ["Boeing 777", "Airbus A321neo", "Boeing 737 MAX", "Airbus A320", "Boeing 787"]
+        return (aircraft[Int(h % UInt64(aircraft.count))],
+                100 + Int((h >> 8) % 899),
+                [10, 12, 15, 18, 20][Int((h >> 16) % 5)])
+    }
+
+    /// Two-letter IATA-ish code for the flight-number prefix.
+    private static func airlineCode(_ airline: String?) -> String {
+        switch airline {
+        case "JetBlue":   return "B6"
+        case "Delta":     return "DL"
+        case "American":  return "AA"
+        case "United":    return "UA"
+        case "Spirit":    return "NK"
+        case "Alaska":    return "AS"
+        case "Southwest": return "WN"
+        default:          return String((airline ?? "XX").prefix(2)).uppercased()
+        }
+    }
+
+    /// Parse the leading integer out of a "$514" style price string.
+    private static func intFromPrice(_ price: String?) -> Int? {
+        guard let price else { return nil }
+        let digits = price.filter(\.isNumber)
+        return Int(digits)
     }
 
     /// Deterministic guest score (8.0–9.7) + review count from a stable hash of
@@ -140,7 +191,8 @@ enum Mock {
                                options: [Option], label: String,
                                blockSpecs: [BlockSpec] = []) -> ResultSet {
         let setId = IDGen.uid("set")
-        let opts = Array((options.isEmpty ? [Option(title: title)] : options).prefix(4))
+        let fallbackOptions = options.isEmpty && blockSpecs.isEmpty ? [Option(title: title)] : options
+        let opts = Array(fallbackOptions.prefix(4))
         let cityHint = locationFromTitle(title)
 
         let cards = opts.enumerated().map { (i, opt) in
@@ -168,16 +220,42 @@ enum Mock {
             let bid = "\(setId)-b\(i)"
             switch spec.style {
             case .text, .heading:
-                return ResultBlock(id: bid, style: spec.style, text: spec.text)
-            case .cards, .carousel:
+                return ResultBlock(
+                    id: bid,
+                    style: spec.style,
+                    text: spec.text,
+                    cardPresentation: spec.cardPresentation,
+                    semanticType: spec.semanticType,
+                    semanticProps: spec.semanticProps
+                )
+            case .highlight, .cards, .carousel:
                 let blockKind = spec.kind ?? kind
+                let presentation = spec.cardPresentation == .automatic
+                    ? defaultCardPresentation(for: blockKind)
+                    : spec.cardPresentation
                 let cards = spec.items.enumerated().map { (j, o) in
                     buildCard(threadId: threadId, setId: bid, index: j, kind: blockKind,
                               title: o.title, detail: o.detail, price: o.price,
                               image: o.imageURL, option: o, cityHint: cityHint)
                 }
-                return ResultBlock(id: bid, style: spec.style, text: spec.text, cards: cards)
+                return ResultBlock(
+                    id: bid,
+                    style: spec.style,
+                    text: spec.text,
+                    cards: cards,
+                    cardPresentation: presentation,
+                    semanticType: spec.semanticType,
+                    semanticProps: spec.semanticProps
+                )
             }
+        }
+    }
+
+    private static func defaultCardPresentation(for kind: Kind) -> ResultCardPresentation {
+        switch kind {
+        case .lodging: return .lodging
+        case .flights: return .flight
+        case .cars, .activities, .other: return .generic
         }
     }
 
@@ -188,7 +266,12 @@ enum Mock {
         var blocks: [ResultBlock] = [
             ResultBlock(id: "\(setId)-b0", style: .text,
                         text: summary.isEmpty ? introText(kind) : summary),
-            ResultBlock(id: "\(setId)-b1", style: .cards, cards: Array(cards.prefix(3))),
+            ResultBlock(
+                id: "\(setId)-b1",
+                style: .cards,
+                cards: Array(cards.prefix(3)),
+                cardPresentation: defaultCardPresentation(for: kind)
+            ),
         ]
         let alts = altItems[kind] ?? []
         if !alts.isEmpty {
@@ -198,7 +281,12 @@ enum Mock {
                           cityHint: cityHint)
             }
             blocks.append(ResultBlock(id: "\(setId)-b2", style: .heading, text: "You might also like"))
-            blocks.append(ResultBlock(id: "\(setId)-b3", style: .carousel, cards: altCards))
+            blocks.append(ResultBlock(
+                id: "\(setId)-b3",
+                style: .carousel,
+                cards: altCards,
+                cardPresentation: defaultCardPresentation(for: kind)
+            ))
         }
         return blocks
     }
@@ -246,11 +334,9 @@ enum Mock {
     static func buildThreadNode(_ p: ThreadPayload) -> ThreadNode {
         let id = IDGen.uid(p.kind.rawValue)
         let first = buildResultSet(threadId: id, kind: p.kind, title: p.title,
-                                   summary: p.summary, options: p.options, label: "Initial results",
+                                   summary: p.summary, options: p.options, label: p.label,
                                    blockSpecs: p.blocks)
         let hero = first.cards.first?.imageURL
-        var prefs: [String] = []
-        if p.kind == .lodging, let loc = locationFromTitle(p.title) { prefs = [loc] }
         let preview = Preview(
             icon: hero == nil ? p.kind.icon : nil,
             imageURL: hero,
@@ -259,7 +345,10 @@ enum Mock {
             layoutId: "\(id)-card"
         )
         return ThreadNode(id: id, kind: p.kind, title: p.title.isEmpty ? "Results" : p.title,
-                          preferences: prefs, preview: preview, resultSets: [first])
+                          source: p.source, composition: p.composition,
+                          scenarioID: p.scenarioID, scenarioStep: p.scenarioStep,
+                          presentation: p.presentation, continuation: p.continuation,
+                          decision: p.decision, preview: preview, resultSets: [first])
     }
 
     /// Fallback card for free-text input with no detected intent, so every input
@@ -281,9 +370,27 @@ enum Mock {
         let hero = set.cards.first?.imageURL
         var n = node
         let chip = p.chip.trimmingCharacters(in: .whitespaces)
-        if !chip.isEmpty, !n.preferences.contains(where: { $0.lowercased() == chip.lowercased() }) {
-            n.preferences.append(chip)
+        var filters = p.presentation.filters
+        if filters.isEmpty { filters = n.presentation.filters }
+        if !chip.isEmpty, !filters.contains(where: { $0.lowercased() == chip.lowercased() }) {
+            filters.append(chip)
         }
+        n.presentation = ResultsPresentation(
+            showsMap: p.presentation.showsMap,
+            showsFilters: p.presentation.showsFilters,
+            overlaySheet: p.presentation.overlaySheet,
+            mapLayout: p.presentation.mapLayout,
+            canvasLayout: p.presentation.canvasLayout,
+            filters: filters,
+            refinements: p.presentation.refinements,
+            map: p.presentation.map
+        )
+        n.continuation = p.continuation ?? n.continuation
+        n.decision = p.decision ?? n.decision
+        if let scenarioID = p.scenarioID { n.scenarioID = scenarioID }
+        if let scenarioStep = p.scenarioStep { n.scenarioStep = scenarioStep }
+        n.source = p.source
+        n.composition = p.composition
         if n.resultSets.isEmpty { n.resultSets = [set] } else { n.resultSets[n.resultSets.count - 1] = set }
         if !p.title.isEmpty { n.title = p.title }
         n.resultsLabel = p.label.isEmpty ? (n.resultsLabel ?? "Updated results") : p.label
@@ -341,17 +448,6 @@ enum Mock {
                 ]),
             ]
         )
-    }
-
-    /// Query chips for the split panel (data.js queryChipsForThread).
-    static func queryChips(for node: ThreadNode) -> [QueryChip] {
-        if !node.preferences.isEmpty {
-            return node.preferences.enumerated().map { (i, label) in
-                QueryChip(label: label, icon: i == 0 ? "place" : nil)
-            }
-        }
-        if rx(node.title, #"\bmiami\b"#) { return [QueryChip(label: "Miami", icon: "place")] }
-        return []
     }
 
     // MARK: - factories (root category asks)
@@ -423,7 +519,7 @@ enum Mock {
                               message: "Here are some places to stay for your trip.",
                               layoutId: "\(id)-card")
         return ThreadNode(id: id, kind: .lodging, title: "Hotels in Miami",
-                          preferences: ["Miami", "pool", "spa"], preview: preview, resultSets: [set])
+                          preview: preview, resultSets: [set])
     }
 
     private static func flightsThread() -> ThreadNode {
@@ -443,6 +539,7 @@ enum Mock {
                               message: "I found a few flights for your dates.",
                               layoutId: "\(id)-card")
         return ThreadNode(id: id, kind: .flights, title: "Flights",
+                          source: .mock, composition: .flightList,
                           preview: preview, resultSets: [set])
     }
 

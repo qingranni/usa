@@ -1,7 +1,8 @@
 # Universal Search App
 
 Native SwiftUI port of the universal-search travel prototype (iPhone 16/17 Pro).
-OpenAI key lives in the gitignored `Secrets.swift`.
+
+Result data comes from two selectable pipelines: Narrative + mock, and Gen-UI.
 
 Build:
 ```

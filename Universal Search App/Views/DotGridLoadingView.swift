@@ -65,7 +65,7 @@ struct DotGridLoadingView: View {
                 .opacity(appeared ? 1 : 0)
                 .scaleEffect(appeared ? 1 : 1.04)
 
-            Text("Searching…")
+            Text(Copy["search.searching"])
                 .font(.centra(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.85))
                 .frame(maxHeight: .infinity, alignment: .bottom)
@@ -135,7 +135,7 @@ struct HomeLoadingVideoView: View {
                 }
                 .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
 
-                Text("Loading results")
+                Text(Copy["results.loadingResults"])
                     .font(.centra(size: 20, weight: .medium))
                     .tracking(-0.2)
                     .foregroundStyle(Theme.ink)

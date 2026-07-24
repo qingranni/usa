@@ -45,7 +45,10 @@ struct FilterScrubberPill: View {
 
             HStack(spacing: 0) {
                 ForEach(Array(filters.enumerated()), id: \.offset) { index, filter in
-                    Text(filter)
+                    HStack(spacing: 7) {
+                        EGDSIcon(FilterChipIconName.forLabel(filter), size: 15)
+                        Text(filter)
+                    }
                         .font(.centra(size: 14, weight: .medium))
                         .tracking(-0.14)
                         .foregroundStyle(

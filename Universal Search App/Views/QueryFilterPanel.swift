@@ -2,38 +2,82 @@
 //  QueryChipsAndFilters.swift
 //  Universal Search App
 //
-//  Suggested-filter chips for the shared light query-playback card's results
-//  variant. Tapping a filter sends it as a follow-up. The query title and the
-//  "Refine" label are owned by the shared scaffold in OverviewCard.
+//  Applied filters emitted by the selected data source. Empty output renders
+//  nothing; this view never invents defaults.
 //
 
 import SwiftUI
 
 struct QueryChipsAndFilters: View {
     @Bindable var store: AppStore
-    let thread: ThreadNode
+    let filters: [String]
+    let refinements: [RefinementAction]
+    var canvasLayout: ResultsCanvasLayout = .standard
+    /// Leading/trailing inset for the chips. Applied as a scroll *content*
+    /// margin so the row scrolls edge-to-edge instead of the viewport being
+    /// clipped 28pt in from the screen edge.
+    var horizontalInset: CGFloat = 28
 
-    private let suggested = Copy.list("refineSuggestions")
+    // Filter-chip height is aligned across all canvas layouts to match the
+    // Mexico (narrative+mock) orientation rather than shrinking for others.
+    private let controlHeight: CGFloat = 48
 
     var body: some View {
-        FlowLayout(hSpacing: 6, vSpacing: 6) {
-            ForEach(suggested, id: \.self) { f in
-                Button { Task { await store.send(f, refine: true) } } label: {
-                    Text(f)
-                        .font(.centra(size: 16))
+        if !filters.isEmpty || !refinements.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    EGDSIcon("slider.horizontal.3", size: 15)
                         .foregroundStyle(Theme.figmaInk)
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 12)
-                        .background(Theme.figmaChipFill, in: Capsule())
+                        .frame(width: controlHeight, height: controlHeight)
+                        .background(Theme.canvasFilterChipFill, in: Circle())
+                        .overlay(alignment: .topTrailing) {
+                            if !filters.isEmpty {
+                                Text("\(filters.count)")
+                                    .font(.centra(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 18, height: 18)
+                                    .background(Theme.ink, in: Circle())
+                                    .overlay {
+                                        Circle().strokeBorder(.white.opacity(0.15))
+                                    }
+                                    .offset(x: 2, y: -2)
+                            }
+                        }
+
+                    ForEach(filters, id: \.self) { filter in
+                        HStack(spacing: 4) {
+                            EGDSIcon(FilterChipIconName.forLabel(filter), size: 14)
+                            Text(filter)
+                        }
+                        .font(.centra(size: 14))
+                        .foregroundStyle(Theme.figmaInk)
+                        .padding(.horizontal, 16)
+                        .frame(height: controlHeight)
+                        .background(Theme.canvasFilterChipFill, in: Capsule())
+                    }
+                    ForEach(refinements) { refinement in
+                        Button {
+                            Task { await store.submit(refinement) }
+                        } label: {
+                            HStack(spacing: 4) {
+                                EGDSIcon("plus", size: 14)
+                                Text(refinement.label)
+                            }
+                                .font(.centra(size: 14))
+                                .foregroundStyle(Theme.figmaInk)
+                                .padding(.horizontal, 16)
+                                .frame(height: controlHeight)
+                                .background(Theme.canvasFilterChipFill, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(.plain)
+                // The filter count badge is offset above the chip row; without
+                // vertical breathing room the ScrollView clips its top edge.
+                .padding(.vertical, 6)
             }
-            EGDSIcon("add", size: 18)
-                .font(.centra(size: 18))
-                .foregroundStyle(Theme.figmaInk)
-                .frame(width: 38, height: 38)
-                .background(Theme.figmaChipFill, in: Capsule())
+            .contentMargins(.horizontal, horizontalInset, for: .scrollContent)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
+
 }

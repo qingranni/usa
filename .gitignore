@@ -3,6 +3,7 @@
 
 # Xcode
 build/
+.build/
 DerivedData/
 .DerivedData/
 *.xcuserstate
@@ -10,5 +11,5 @@ xcuserdata/
 *.xcscmblueprint
 *.xccheckout
 
-# Secrets — local API key, never committed. Copy Secrets.swift.example → Secrets.swift.
+# Secrets — local API credentials, never committed.
 Universal Search App/AI/Secrets.swift

@@ -29,25 +29,48 @@ struct HomeComposerCover: View {
     /// Chip labels from the inline-chip field, folded into the query on submit.
     @State private var chipSummary = ""
     @State private var submitting = false
+    /// In-place voice "Listening…" state: the sheet retracts to reveal the gold +
+    /// waveform strip and the field swaps its placeholder / mic. No modal.
+    @State private var listening = false
+
+    /// Add-image drawer state. Like `listening`, opening it retracts the card and
+    /// renders the picker (menu → photo grid) in the beige gap below — no modal.
+    @State private var addImagePage: AddImageSheetPage? = nil
+    @State private var addImageDraft: [String] = []
+    @State private var attachedImages: [String] = []
 
     private let loadBackground = Theme.cardItem
     private let chipVerticalSpacing: CGFloat = 20
     private let filterPillRowHeight: CGFloat = 52
-
-    private var hasStartedComposing: Bool {
-        !store.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !chipSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
+    /// Gap above the keyboard revealed for the gold + waveform while listening.
+    private let listeningGap: CGFloat = 132
+    /// Mock dictation, committed to the composer on confirm — the real parser
+    /// then turns it into chips. Ends on the destination so its chip surfaces.
+    private let voiceMockPhrase = "A relaxing week in April for 2 adults in Tokyo"
 
     var body: some View {
         GeometryReader { geometry in
-            let composingCardHeight = max(
+            // One constant card height in both the resting and composing states:
+            // it always stops short of the keyboard so the quick-add chip row
+            // rides the gap below it (Figma node 1910:20928). The viewport
+            // (`geometry.size.height`) is already keyboard-reduced, so this
+            // tracks the keyboard across devices.
+            let restingCardHeight = max(
                 320,
                 geometry.size.height
                     - chipVerticalSpacing
                     - filterPillRowHeight
                     - chipVerticalSpacing
             )
+            // Height of the beige gap the inline add-image MENU fills. Zero when
+            // the menu is closed (the photo grid is a sheet, not this gap).
+            let addImageGap: CGFloat = addImagePage == .menu ? 420 : 0
+            // Listening / add-image menu both retract the card to open a gap below.
+            let cardHeight: CGFloat = {
+                if listening { return max(320, geometry.size.height - listeningGap) }
+                if addImagePage == .menu { return max(220, geometry.size.height - addImageGap) }
+                return restingCardHeight
+            }()
 
             ZStack(alignment: .topLeading) {
                 if submitting || store.launching {
@@ -55,20 +78,35 @@ struct HomeComposerCover: View {
                 } else {
                     Theme.cardItem.ignoresSafeArea()
 
-                    RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    // Morphing gold mesh + scrolling waveform, tucked behind the
+                    // sheet and filling the gap above the keyboard while listening.
+                    if listening {
+                        VoiceGoldGlow()
+                            .frame(height: listeningGap + 96)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                            // Lift ONLY the gold so warm white shows between it and
+                            // the keyboard. The waveform overlay is added after the
+                            // offset, so it keeps its original position.
+                            .offset(y: -52)
+                            .overlay(alignment: .bottom) {
+                                VoiceWaveformView()
+                                    .frame(height: 26)
+                                    .padding(.bottom, (listeningGap - 26) / 2)
+                            }
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
+
+                    RoundedRectangle(cornerRadius: 48, style: .continuous)
                         .fill(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: hasStartedComposing ? composingCardHeight : 547)
+                        .frame(height: cardHeight)
                         .shadow(
                             color: Color(red: 12 / 255, green: 14 / 255, blue: 28 / 255)
                                 .opacity(0.08),
                             radius: 32,
                             x: 0,
                             y: 12
-                        )
-                        .animation(
-                            .spring(response: 0.42, dampingFraction: 0.9),
-                            value: hasStartedComposing
                         )
 
                     // SwiftUI shortens this region for the keyboard. The field
@@ -81,16 +119,39 @@ struct HomeComposerCover: View {
                                           focusDelay: 0.35,
                                           flexesMiddleGap: true,
                                           showsHomeSuggestions: true,
-                                          fullViewProgress: 1)
+                                          fullViewProgress: 1,
+                                          isListening: listening,
+                                          onMicTap: startListening,
+                                          onVoiceCancel: cancelListening,
+                                          onVoiceConfirm: confirmListening,
+                                          addImagePage: $addImagePage,
+                                          attachedImages: $attachedImages)
                     }
                     .padding(.horizontal, 32.5)
-                    .padding(.top, 101)
-                    // The pill scroll view contributes 2pt below its contents.
-                    .padding(.bottom, chipVerticalSpacing - 2)
+                    // Land the first text line 24pt below the close button.
+                    // Close button occupies safeTop + 8 (top) + 44 (height); the
+                    // editor adds a 4pt top inset, so subtract it here.
+                    .padding(.top, metrics.safeTop + 8 + 44 + 24 - 4)
+                    // Resting: 2pt trim below the pills. Listening: lift the ✕/✓
+                    // row onto the retracted sheet, above the gold gap.
+                    .padding(.bottom, listening ? listeningGap + chipVerticalSpacing : chipVerticalSpacing - 2)
 
                     closeButton
                         .padding(.leading, 32.5)
                         .padding(.top, metrics.safeTop + 8)
+
+                    // The add-image MENU, rendered directly in the beige gap
+                    // below the retracted card (no modal sheet). The photo grid
+                    // is a separate overlay sheet (see `.sheet` below).
+                    if addImagePage == .menu {
+                        AddImageMenuView(
+                            onPhotos: { withAnimation(Theme.springSoft) { addImagePage = .photos } },
+                            onClose: { withAnimation(Theme.springSoft) { addImagePage = nil } }
+                        )
+                        .frame(height: addImageGap)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
             }
         }
@@ -101,6 +162,31 @@ struct HomeComposerCover: View {
                 .onEnded { if !submitting, $0.translation.height > 80 { dismiss() } }
         )
         .onAppear { Haptics.impact(.light) }
+        .onChange(of: addImagePage) { old, new in
+            // Seed the grid's in-progress selection from the committed set on open.
+            if old == nil, new != nil { addImageDraft = attachedImages }
+        }
+        .sheet(isPresented: photoSheetPresented) {
+            AddImagePhotoSheet(
+                catalog: AddImageCatalog.photos,
+                draft: $addImageDraft,
+                onBack: { addImagePage = .menu },
+                onAdd: {
+                    withAnimation(Theme.springSoft) {
+                        attachedImages = addImageDraft
+                        addImagePage = nil
+                    }
+                }
+            )
+        }
+    }
+
+    /// True while the photo grid sheet is up. Swiping it down closes the flow.
+    private var photoSheetPresented: Binding<Bool> {
+        Binding(
+            get: { addImagePage == .photos },
+            set: { if !$0, addImagePage == .photos { addImagePage = nil } }
+        )
     }
 
     private var closeButton: some View {
@@ -108,23 +194,35 @@ struct HomeComposerCover: View {
             EGDSIcon("xmark", size: 18)
                 .foregroundStyle(Theme.figmaInk)
                 .frame(width: 44, height: 44)
-                .background {
-                    ZStack {
-                        Circle().fill(Theme.cardItem)
-                        Circle().fill(
-                            LinearGradient(colors: [.white.opacity(0), .white.opacity(0.5)],
-                                           startPoint: .top, endPoint: .bottom)
-                        )
-                    }
-                }
-                .overlay(Circle().strokeBorder(.white, lineWidth: 1))
+                .background(composerControlFill())
                 .shadow(color: Theme.ink.opacity(0.08), radius: 16, x: 0, y: 12)
         }
         .buttonStyle(.plain)
     }
 
+    // MARK: - Voice listening
+
+    private func startListening() {
+        withAnimation(Theme.springSoft) { listening = true }
+    }
+
+    private func cancelListening() {
+        Haptics.impact(.light)
+        withAnimation(Theme.springSoft) { listening = false }
+    }
+
+    private func confirmListening() {
+        Haptics.impact(.medium)
+        // Commit the mock transcript; the field's parser turns it into chips for
+        // review. The editor kept focus throughout, so the keyboard stays up.
+        store.composerText = voiceMockPhrase
+        withAnimation(Theme.springSoft) { listening = false }
+    }
+
     private var canSend: Bool {
-        !(store.composerText + " " + chipSummary).trimmingCharacters(in: .whitespaces).isEmpty
+        // Attached images alone are enough to submit ("treat it as filled").
+        !attachedImages.isEmpty
+            || !(store.composerText + " " + chipSummary).trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private func submit() {
@@ -140,8 +238,11 @@ struct HomeComposerCover: View {
         submitting = true
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                         to: nil, from: nil, for: nil)
-        // Swap to the loading surface before dismissing so the native cover
-        // transition cannot show composer chrome during the root load sequence.
+        // Mount the root loading surface synchronously BEFORE dismissing, so the
+        // cover's zoom-back-to-pill reveals the load screen underneath instead of
+        // a flash of the homepage while the async route resolves. `submitting`
+        // keeps the cover's own surface on the same load background meanwhile.
+        store.homeSubmitLoading = true
         dismiss()
         Task { await store.submitComposer() }
     }

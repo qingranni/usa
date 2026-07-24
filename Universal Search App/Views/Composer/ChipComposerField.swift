@@ -51,12 +51,53 @@ struct ChipComposerField: View {
     /// 0 keeps the docked/medium composer exactly as-is. 1 applies the full
     /// takeover treatment from Figma; fractional values support the drag scrub.
     var fullViewProgress: CGFloat = 0
+    /// When false, the field's own placeholder is suppressed — the host draws a
+    /// single placeholder that scales continuously across the pill→docked→full
+    /// morph, so there's no duplicate/stepped placeholder inside the field.
+    var showsFieldPlaceholder: Bool = true
+
+    // MARK: - Voice input
+
+    /// Drives the in-place "Listening…" state: the host retracts the sheet to
+    /// reveal the gold + waveform strip, and the field swaps its placeholder for
+    /// "Listening…" and its mic for ✕/✓. Owned by the host so the sheet geometry
+    /// can morph in lockstep — the editor keeps first responder throughout, so the
+    /// keyboard never drops.
+    var isListening: Bool = false
+    /// Mic tapped in the empty state — the host enters the listening state.
+    var onMicTap: () -> Void = {}
+    /// ✕ tapped — discard and return to the resting composer.
+    var onVoiceCancel: () -> Void = {}
+    /// ✓ tapped — commit the mock transcript and return to the composer.
+    var onVoiceConfirm: () -> Void = {}
+
+    // MARK: - Add-image flow
+
+    /// Owned by the host so it can render the add-image drawer in the beige area
+    /// below the retracted card. nil = closed; `.menu` / `.photos` while open.
+    var addImagePage: Binding<AddImageSheetPage?> = .constant(nil)
+    /// Committed image selection; renders `AttachedImagesChip` above the input.
+    var attachedImages: Binding<[String]> = .constant([])
 
     private let searchCategory = "Stays"
     private let ink = Color(hex: "0c0e1c")
 
     private var fullProgress: CGFloat {
         clamp(fullViewProgress, 0, 1)
+    }
+
+    /// The docked "Ask anything" bar: a simple single-line input with the plus and
+    /// submit on one row and no smart chips. Dragging toward the full takeover
+    /// (fullProgress → 1) crosses back into the rich search composer.
+    private var isCollapsed: Bool { fullProgress < 0.5 }
+
+    /// Smart chips / parser predictions belong to the expanded search state.
+    /// Home mode also shows the chip row (plus + Add …) in the resting/empty
+    /// state so the suggestion carousel and quick-add chips sit together by
+    /// default (Figma node 1910:20928); elsewhere it stays typing-only.
+    private var showsSmartChips: Bool {
+        guard !isCollapsed else { return false }
+        return showsHomeSuggestions || !showsHomeDefaultState
     }
 
     private var pillForeground: Color {
@@ -101,19 +142,30 @@ struct ChipComposerField: View {
     @State private var parserDebounce: DispatchWorkItem? = nil
     @State private var chipTransition: ChipTransitionInfo? = nil
 
+    /// Debounced predictive-input state driving the smart chip row. Recomputed a
+    /// beat after typing settles (see `schedulePredictionUpdate`) so the chips
+    /// don't reshuffle on every keystroke.
+    @State private var predictionState: ComposerPredictionState = .defaults([])
+    @State private var predictionDebounce: DispatchWorkItem? = nil
+
     @State private var ghostSuggestion = ""
-    @State private var rotatingGhostIndex = 0
-    @State private var rotatingGhostTask: Task<Void, Never>? = nil
     @State private var activeGhostCategory: GhostMenuCategory = .none
     @State private var ghostOverlayController = WindowOverlayController()
     @State private var ghostMenuState = GhostMenuState()
     @State private var showGhostContextMenu = false
-    @State private var selectedHomeSuggestion: Int? = 1
+    // Rendered as `homeSuggestionCopies` back-to-back copies of the 3 base cards
+    // so auto-rotation can always glide *forward* into the next copy and then
+    // silently rewind one set — an infinite carousel that never scrolls back to
+    // reset. Selection starts on card 1 of the middle copy.
+    @State private var selectedHomeSuggestion: Int? = ChipComposerField.homeSuggestionCount + 1
 
-    private let homeSuggestionCount = 3
+    private static let homeSuggestionCount = 3
+    private let homeSuggestionCount = ChipComposerField.homeSuggestionCount
+    private let homeSuggestionCopies = 3
     private let homeSuggestionSpacing: CGFloat = 8
     private let homeSuggestionCarouselBleed: CGFloat = 32.5
     private let homeSuggestionRotationDelay: Duration = .seconds(3)
+    private let homeSuggestionRotationDuration: TimeInterval = 1.0
 
     // MARK: - Derived
 
@@ -126,7 +178,7 @@ struct ChipComposerField: View {
             tokens.append(ChipToken(id: "Dates", icon: "calendar", label: shortDateLabel))
         }
         if totalGuests > 0 {
-            tokens.append(ChipToken(id: "Guests", icon: "person", label: shortGuestLabel))
+            tokens.append(ChipToken(id: "Guests", icon: "person.2", label: shortGuestLabel))
         }
         return tokens
     }
@@ -136,7 +188,9 @@ struct ChipComposerField: View {
     }
 
     private var searchInputIsEmpty: Bool {
-        text.isEmpty && searchInputBarChips.isEmpty
+        // Attached images count as content: they drop the home carousel and flip
+        // the mic to the submit arrow (the composer reads as "filled").
+        text.isEmpty && searchInputBarChips.isEmpty && attachedImages.wrappedValue.isEmpty
     }
 
     private var showsHomeDefaultState: Bool {
@@ -171,7 +225,9 @@ struct ChipComposerField: View {
         ChipComposerCatalog.quickActionFilterChips[searchCategory] ?? ["Destination", "Dates", "Guests"]
     }
 
-    private var predictionState: ComposerPredictionState {
+    /// Live (undebounced) predictive state for the current field contents. The
+    /// debounced `predictionState` is set from this via `schedulePredictionUpdate`.
+    private func currentPredictionState() -> ComposerPredictionState {
         ComposerPredictionEngine.state(
             for: ComposerPredictionContext(
                 text: text,
@@ -183,20 +239,70 @@ struct ChipComposerField: View {
         )
     }
 
+    /// Recompute the smart-chip row a beat after input settles. Structured
+    /// matches (already debounced by the parser) take the row over immediately;
+    /// everything else waits out `predictionSettleDelay` so the chips don't
+    /// reshuffle on every keystroke.
+    private func schedulePredictionUpdate() {
+        predictionDebounce?.cancel()
+
+        if !pendingPredictions.isEmpty {
+            predictionState = .confirmations
+            return
+        }
+
+        let work = DispatchWorkItem {
+            predictionState = currentPredictionState()
+        }
+        predictionDebounce = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + predictionSettleDelay, execute: work)
+    }
+
+    /// Debounce windows. Kept equal so the parser's structured pills and the
+    /// predictive chips land on the same beat rather than fighting each other.
+    private let parserSettleDelay: TimeInterval = 0.45
+    private let predictionSettleDelay: TimeInterval = 0.45
+
+    /// The add-image drawer is open — the host has retracted the card, so the
+    /// field shows only its placeholder: no carousel, action row, or filter pills.
+    private var addImageActive: Bool { addImagePage.wrappedValue != nil }
+
     // MARK: - Body
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !attachedImages.wrappedValue.isEmpty {
+                AttachedImagesChip(images: attachedImages.wrappedValue) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        attachedImages.wrappedValue = []
+                    }
+                }
+                .padding(.leading, showsHomeSuggestions ? 0 : 8 * fullProgress)
+                .padding(.bottom, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             inputArea
                 // The shared full composer keeps the query at x=36. The newer
                 // home frame uses the card's 32.5pt gutter directly.
                 .padding(.leading, showsHomeSuggestions ? 0 : 8 * fullProgress)
 
-            if showsHomeDefaultState {
-                Color.clear.frame(height: 174.5)
+            if isListening || addImageActive {
+                // Listening / add-image both drop the carousel + controls so the
+                // card shows only the placeholder above the retracted gap.
+                Spacer(minLength: 0)
+            } else if showsHomeDefaultState {
+                // Flexible gaps spread editor → carousel → mic → chips down the
+                // card and shrink to keep the chip row above the keyboard on
+                // shorter viewports (Figma node 1910:20928). Fixed heights here
+                // overflowed once the chip row was added.
+                Spacer(minLength: 24)
                 homeSuggestionCarousel
                     .transition(.opacity)
-                Color.clear.frame(height: 30.5)
+                // Keep the carousel + mic together as a pair; the greedy spacers
+                // above and below the pair center it and drop the chip row to the
+                // bottom.
+                Color.clear.frame(height: 24)
             } else if flexesMiddleGap {
                 Spacer(minLength: 12)
             } else {
@@ -207,14 +313,36 @@ struct ChipComposerField: View {
             // carousel shortens the content above it by 89pt, so the mic/submit
             // control lifts in lockstep with the white card instead of being
             // replaced at a new position.
-            HStack {
-                Spacer(minLength: 0)
-                trailingActionButton
+            if !addImageActive {
+                HStack(spacing: 12) {
+                    if isListening {
+                        Spacer(minLength: 0)
+                        voiceCancelButton
+                        voiceConfirmButton
+                    } else {
+                        // Collapsed, the plus rides the same line as submit (the smart
+                        // chips row that normally carries the plus is hidden).
+                        // Expanded, the plus moves back into the chips row below.
+                        if !showsSmartChips && !showsHomeDefaultState { collapsedPlusButton }
+                        Spacer(minLength: 0)
+                        trailingActionButton
+                    }
+                }
+                .padding(.trailing, showsHomeSuggestions ? 0 : 8 * fullProgress)
+                .padding(.bottom, showsHomeDefaultState ? 0 : lerp(12, 56, fullProgress))
             }
-            .padding(.trailing, showsHomeSuggestions ? 0 : 8 * fullProgress)
-            .padding(.bottom, showsHomeDefaultState ? 0 : lerp(12, 56, fullProgress))
 
-            if !showsHomeDefaultState {
+            // Home resting state: the greedy top spacer above the carousel now
+            // absorbs all the slack, dropping the carousel + mic pair to the
+            // bottom of the white card. This fixed gap lands the mic row 32pt
+            // above the card's bottom edge — the card ends `chipVerticalSpacing
+            // + 2` (22pt) above the filter-pill row that rides the beige gap
+            // below it, so 32 + 22 = 54pt sits between the mic row and pills.
+            if showsHomeDefaultState && !isListening && !addImageActive {
+                Color.clear.frame(height: 54)
+            }
+
+            if showsSmartChips && !isListening && !addImageActive {
                 filterPills
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -223,6 +351,16 @@ struct ChipComposerField: View {
             .spring(response: 0.42, dampingFraction: 0.9),
             value: showsHomeDefaultState
         )
+        .animation(Theme.springSoft, value: isListening)
+        .animation(Theme.springSoft, value: addImageActive)
+        .onChange(of: addImagePage.wrappedValue) { _, page in
+            // Drawer closed → bring the keyboard back (node 2583-17114).
+            if page == nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    isInputFocused = true
+                }
+            }
+        }
         .onAppear {
             // Focus AFTER the composer's entrance morph settles. Requesting first
             // responder during the grow (while the field is still transparent /
@@ -243,18 +381,24 @@ struct ChipComposerField: View {
             } else {
                 pillsRevealed = true
             }
-            startRotatingGhostText()
-        }
-        .onDisappear {
-            stopRotatingGhostText()
+            updateGhostText()
+            // Seed the resting chips immediately; later changes are debounced.
+            predictionState = currentPredictionState()
         }
         .onChange(of: text) { _, newValue in
             updateGhostText()
             handleInputTextChange(newValue)
+            schedulePredictionUpdate()
         }
         .onChange(of: composedSummary) { _, newValue in
             chipSummary = newValue
             updateGhostText()
+            schedulePredictionUpdate()
+        }
+        .onChange(of: pendingPredictions.count) { _, _ in
+            // Structured matches appearing/clearing flips which branch owns the
+            // row; keep the predictive state in step with it.
+            schedulePredictionUpdate()
         }
         .sheet(isPresented: filterSheetPresented) {
             filterOverlayContent
@@ -274,8 +418,19 @@ struct ChipComposerField: View {
         editor
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
-        .onTapGesture { isInputFocused = true }
+        .onTapGesture { if !isListening { isInputFocused = true } }
         .frame(minHeight: 50)
+        // While listening, an opaque "Listening…" label covers the editor (which
+        // stays first responder underneath, so the keyboard never drops).
+        .overlay(alignment: .topLeading) {
+            if isListening {
+                VoiceListeningLabel()
+                    .padding(.top, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(Color.white)
+                    .transition(.opacity)
+            }
+        }
     }
 
     private var editor: some View {
@@ -283,12 +438,13 @@ struct ChipComposerField: View {
             text: $text,
             chips: searchInputBarChips,
             chipRenderMode: .inline,
-            placeholder: showsHomeSuggestions ? "Where do you want to go?" : "",
+            placeholder: showsHomeSuggestions ? Copy["search.placeholder"] : Copy["search.followUp"],
+            showsPlaceholder: showsFieldPlaceholder,
             isFocused: $isInputFocused,
             highlightRange: highlightNSRange,
             fontName: "CentraNo2-Medium",
-            fontSize: 20,
-            lineHeight: lerp(30, 40, fullProgress),
+            fontSize: isCollapsed ? 16 : 20,
+            lineHeight: isCollapsed ? 22 : lerp(30, 40, fullProgress),
             lineSpacing: 8,
             ghostText: ghostSuggestion,
             onAcceptGhostText: acceptGhostText,
@@ -304,6 +460,31 @@ struct ChipComposerField: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
+    // Leading plus on the collapsed bar. Matches the trailing control's
+    // 50pt circle and the light chip fill. Opens the add-image flow.
+    private var collapsedPlusButton: some View {
+        Button(action: openAddImageDrawer) {
+            EGDSIcon("plus", size: 18)
+                .foregroundStyle(ink.opacity(0.9))
+                .frame(width: 50, height: 50)
+                .background(
+                    Circle().fill(Color(red: 241 / 255, green: 241 / 255, blue: 241 / 255).opacity(0.6))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Add-image flow
+
+    /// Tapping `+` closes the keyboard and asks the host to open the add-image
+    /// menu in the freed beige space. The host retracts the card and renders
+    /// `AddImageMenuView`; the keyboard returns when the flow closes (`.onChange`).
+    private func openAddImageDrawer() {
+        Haptics.impact(.light)
+        isInputFocused = false
+        withAnimation(Theme.springSoft) { addImagePage.wrappedValue = .menu }
+    }
+
     @ViewBuilder
     private var trailingActionButton: some View {
         let size = lerp(50, 52, fullProgress)
@@ -311,7 +492,10 @@ struct ChipComposerField: View {
         if searchInputIsEmpty {
             Button {
                 Haptics.impact(.light)
-                isInputFocused = true
+                // Empty composer → morph the composer into the listening state in
+                // place. The host retracts the sheet and reveals the gold strip;
+                // the editor keeps focus so the keyboard stays up.
+                onMicTap()
             } label: {
                 EGDSIcon(showsHomeSuggestions ? "mic" : "mic.fill", size: 20)
                     .foregroundStyle(showsHomeSuggestions ? Theme.figmaInk : ink.opacity(0.6))
@@ -352,6 +536,32 @@ struct ChipComposerField: View {
         }
     }
 
+    // Listening-state controls, shown in place of the mic: discard (light) and
+    // confirm (dark), 52pt per Figma.
+    private var voiceCancelButton: some View {
+        Button(action: onVoiceCancel) {
+            EGDSIcon("xmark", size: 20)
+                .foregroundStyle(Theme.figmaInk)
+                .frame(width: 52, height: 52)
+                .background(composerControlFill())
+                .shadow(color: Theme.ink.opacity(0.08), radius: 12, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
+        .transition(.scale(scale: 0.6).combined(with: .opacity))
+    }
+
+    private var voiceConfirmButton: some View {
+        Button(action: onVoiceConfirm) {
+            EGDSIcon("checkmark", size: 20)
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 52)
+                .background(Circle().fill(Theme.figmaInk))
+                .shadow(color: Theme.ink.opacity(0.18), radius: 12, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
+        .transition(.scale(scale: 0.6).combined(with: .opacity))
+    }
+
     private func deleteChip(_ chipId: String) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             switch chipId {
@@ -376,24 +586,17 @@ struct ChipComposerField: View {
     private var homeSuggestionCarousel: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: homeSuggestionSpacing) {
-                homeSuggestionCard(
-                    id: 0,
-                    asset: "composer-building-suggestion",
-                    artworkSize: CGSize(width: 128, height: 128),
-                    artworkOffset: CGSize(width: 241, height: -1)
-                )
-                homeSuggestionCard(
-                    id: 1,
-                    asset: "composer-trip-suggestion",
-                    artworkSize: CGSize(width: 211, height: 170),
-                    artworkOffset: CGSize(width: 210.36, height: -25.92)
-                )
-                homeSuggestionCard(
-                    id: 2,
-                    asset: "composer-trip-suggestion",
-                    artworkSize: CGSize(width: 211, height: 170),
-                    artworkOffset: CGSize(width: 211, height: -25)
-                )
+                ForEach(0 ..< homeSuggestionCount * homeSuggestionCopies, id: \.self) { index in
+                    let card = homeSuggestionCards[index % homeSuggestionCount]
+                    homeSuggestionCard(
+                        id: index,
+                        asset: card.asset,
+                        prompt: card.prompt,
+                        subtitle: card.subtitle,
+                        artworkSize: card.artworkSize,
+                        artworkOffset: card.artworkOffset
+                    )
+                }
             }
             .scrollTargetLayout()
         }
@@ -417,23 +620,78 @@ struct ChipComposerField: View {
                 }
 
                 guard showsHomeDefaultState else { return }
-                withAnimation(.easeInOut(duration: 0.55)) {
-                    let currentSuggestion = selectedHomeSuggestion ?? 0
-                    selectedHomeSuggestion = (currentSuggestion + 1) % homeSuggestionCount
+                let current = selectedHomeSuggestion ?? homeSuggestionCount
+                let next = current + 1
+                // Glide one card forward with the requested 0.75, 0, 0, 1 curve.
+                withAnimation(.timingCurve(0.75, 0, 0, 1, duration: homeSuggestionRotationDuration)) {
+                    selectedHomeSuggestion = next
+                }
+                // Once the glide lands in the final copy, wait for it to finish,
+                // then silently rewind one full set. The rewound card is visually
+                // identical, so the carousel keeps advancing forever without ever
+                // scrolling backward to reset.
+                if next >= homeSuggestionCount * (homeSuggestionCopies - 1) {
+                    do {
+                        try await Task.sleep(for: .seconds(homeSuggestionRotationDuration))
+                    } catch {
+                        return
+                    }
+                    guard showsHomeDefaultState else { return }
+                    var silent = Transaction()
+                    silent.disablesAnimations = true
+                    withTransaction(silent) {
+                        selectedHomeSuggestion = next - homeSuggestionCount
+                    }
                 }
             }
         }
     }
 
+    private struct HomeSuggestionCardModel {
+        let asset: String
+        let prompt: String
+        let subtitle: String
+        let artworkSize: CGSize
+        let artworkOffset: CGSize
+    }
+
+    private var homeSuggestionCards: [HomeSuggestionCardModel] {
+        [
+            HomeSuggestionCardModel(
+                asset: "composer-trip-suggestion",
+                prompt: Copy["home.suggestions.trip.prompt"],
+                subtitle: Copy["home.suggestions.trip.subtitle"],
+                artworkSize: CGSize(width: 155, height: 125),
+                artworkOffset: CGSize(width: 216, height: -6)
+            ),
+            HomeSuggestionCardModel(
+                asset: "composer-building-suggestion",
+                prompt: Copy["home.suggestions.stay.prompt"],
+                subtitle: Copy["home.suggestions.stay.subtitle"],
+                artworkSize: CGSize(width: 128, height: 128),
+                artworkOffset: CGSize(width: 241, height: -1)
+            ),
+            HomeSuggestionCardModel(
+                asset: "composer-trip-suggestion",
+                prompt: Copy["home.suggestions.escape.prompt"],
+                subtitle: Copy["home.suggestions.escape.subtitle"],
+                artworkSize: CGSize(width: 155, height: 125),
+                artworkOffset: CGSize(width: 216, height: -6)
+            ),
+        ]
+    }
+
     private func homeSuggestionCard(
         id: Int,
         asset: String,
+        prompt: String,
+        subtitle: String,
         artworkSize: CGSize,
         artworkOffset: CGSize
     ) -> some View {
         Button {
             Haptics.impact(.light)
-            text = "Weekend getaway near me"
+            text = prompt
             isInputFocused = true
         } label: {
             ZStack(alignment: .topLeading) {
@@ -448,10 +706,10 @@ struct ChipComposerField: View {
             .frame(width: 337, height: 106)
             .overlay(alignment: .leading) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("“Weekend getaway near me”")
+                    Text(prompt)
                         .font(.centra(size: 16, weight: .medium))
                         .foregroundStyle(ink)
-                    Text("Plan a new trip")
+                    Text(subtitle)
                         .font(.centra(size: 16))
                         .foregroundStyle(ink.opacity(0.5))
                 }
@@ -471,12 +729,14 @@ struct ChipComposerField: View {
         offset: CGSize
     ) -> some View {
         if asset == "composer-trip-suggestion" {
-            // Match Figma's crop: a 252pt square image inside a 211×170 window.
+            // Match Figma's crop (node 2358:26146): the ~square trip image is
+            // scaled to 119.41%×146.96% of the artwork window and nudged up/left
+            // by (-8.72%, -24.29%) so the plane sits centered within the window.
             Image(asset)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 252, height: 250)
-                .offset(x: -18.4, y: -41.4)
+                .frame(width: size.width * 1.1941, height: size.height * 1.4696)
+                .offset(x: size.width * -0.0872, y: size.height * -0.2429)
                 .frame(width: size.width, height: size.height, alignment: .topLeading)
                 .clipped()
                 .offset(x: offset.width, y: offset.height)
@@ -512,7 +772,10 @@ struct ChipComposerField: View {
                         Button {
                             applyParsedMatch(prediction)
                         } label: {
-                            BlurTransitionText(text: preview.label)
+                            HStack(spacing: 10) {
+                                EGDSIcon(preview.icon, size: 17)
+                                BlurTransitionText(text: preview.label)
+                            }
                                 .font(.centra(size: 14, weight: pillFontWeight))
                                 .tracking(-0.14)
                                 .foregroundStyle(
@@ -530,13 +793,7 @@ struct ChipComposerField: View {
                                 .clipShape(Capsule())
                         }
                         .buttonStyle(.plain)
-                        .transition(
-                            .asymmetric(
-                                insertion: .scale(scale: 0.90).combined(with: .opacity)
-                                    .animation(.spring(response: 0.3, dampingFraction: 0.85).delay(0.1 * Double(index + 1))),
-                                removal: .scale(scale: 0.90).combined(with: .opacity)
-                            )
-                        )
+                        .transition(.chipAppear(index: index + 1))
                     }
                 } else if !predictiveInputs.isEmpty {
                     ForEach(predictiveInputs) { action in
@@ -544,7 +801,12 @@ struct ChipComposerField: View {
                             Haptics.impact(.light)
                             applyPredictiveInput(action)
                         } label: {
-                            BlurTransitionText(text: action.label)
+                            HStack(spacing: 10) {
+                                if let icon = predictionActionIcon(action) {
+                                    EGDSIcon(icon, size: 17)
+                                }
+                                BlurTransitionText(text: action.label)
+                            }
                                 .font(.centra(size: 14, weight: pillFontWeight))
                                 .tracking(-0.14)
                                 .foregroundStyle(pillForeground)
@@ -554,7 +816,7 @@ struct ChipComposerField: View {
                                 .clipShape(Capsule())
                         }
                         .buttonStyle(.plain)
-                        .transition(.scale(scale: 0.90).combined(with: .opacity))
+                        .transition(.chipAppear(index: action.slot + 1))
                         .modifier(PillEntrance(revealed: pillsRevealed, index: action.slot + 1))
                     }
                 } else {
@@ -567,8 +829,7 @@ struct ChipComposerField: View {
                             openFilter(chip)
                         } label: {
                             HStack(spacing: lerp(12, 10, fullProgress)) {
-                                filterIcon(filterChipIcon(chip))
-                                    .font(.centra(size: 14, weight: .medium))
+                                EGDSIcon(FilterChipIconName.forLabel(chip), size: 17)
                                 Text(chip)
                                     .font(.centra(size: 14, weight: pillFontWeight))
                                     .tracking(-0.14)
@@ -580,7 +841,7 @@ struct ChipComposerField: View {
                             .clipShape(Capsule())
                         }
                         .buttonStyle(.plain)
-                        .transition(.scale(scale: 0.90).combined(with: .opacity))
+                        .transition(.chipAppear(index: index + 1))
                         .modifier(PillEntrance(revealed: pillsRevealed, index: index + 1))
                     }
                 }
@@ -591,6 +852,7 @@ struct ChipComposerField: View {
         .scrollIndicators(.hidden)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: pendingMatch != nil)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: pendingPredictions.count)
+        .animation(.spring(response: 0.35, dampingFraction: 0.88), value: predictionState)
     }
 
     private func applyPredictiveInput(_ action: ComposerPredictionAction) {
@@ -613,7 +875,10 @@ struct ChipComposerField: View {
                 shouldChainFilters = false
                 openFilter(entryPoint.filter)
             } label: {
-                Text(entryPoint.label)
+                HStack(spacing: 10) {
+                    EGDSIcon(FilterChipIconName.forLabel(entryPoint.filter), size: 17)
+                    Text(entryPoint.label)
+                }
                     .font(.centra(size: 14, weight: pillFontWeight))
                     .tracking(-0.14)
                     .foregroundStyle(pillForeground)
@@ -644,14 +909,17 @@ struct ChipComposerField: View {
                     .clipShape(RoundedRectangle(cornerRadius: 32))
             }
             .buttonStyle(.plain)
-            .transition(.scale(scale: 0.90).combined(with: .opacity))
+            .transition(.chipAppear(index: 0))
         } else {
-            EGDSIcon("plus", size: 15)
-                .foregroundStyle(pillForeground)
-                .padding(16)
-                .background(pillBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 32))
-                .transition(.scale(scale: 0.90).combined(with: .opacity))
+            Button(action: openAddImageDrawer) {
+                EGDSIcon("plus", size: 15)
+                    .foregroundStyle(pillForeground)
+                    .padding(16)
+                    .background(pillBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 32))
+            }
+            .buttonStyle(.plain)
+            .transition(.chipAppear(index: 0))
         }
     }
 
@@ -666,23 +934,9 @@ struct ChipComposerField: View {
         }
     }
 
-    @ViewBuilder
-    private func filterIcon(_ name: String) -> some View {
-        switch name {
-        case "mappin": Image("location-pin").renderingMode(.template)
-        case "calendar": Image("calendar-icon").renderingMode(.template)
-        case "person", "person.2": Image("guests-icon").renderingMode(.template)
-        default: EGDSIcon(name, size: 17)
-        }
-    }
-
-    private func filterChipIcon(_ chip: String) -> String {
-        switch chip {
-        case "Destination", "From", "To", "Pick-up", "Drop-off": return "mappin"
-        case "Dates": return "calendar"
-        case "Guests", "Travelers": return "person.2"
-        default: return "plus"
-        }
+    private func predictionActionIcon(_ action: ComposerPredictionAction) -> String? {
+        guard case .filter(let filter) = action.kind else { return nil }
+        return FilterChipIconName.forLabel(filter)
     }
 
     // MARK: - Filter sheets
@@ -986,11 +1240,10 @@ struct ChipComposerField: View {
             }
         }
         parserDebounce = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + parserSettleDelay, execute: work)
     }
 
     private func stillMatchesPending(_ text: String, pending: ParsedMatch) -> Bool {
-        let textNorm = SearchInputParser.normalize(text)
         switch pending.type {
         case .destination:
             guard let dest = pending.resolvedDestination else { return false }
@@ -1005,8 +1258,19 @@ struct ChipComposerField: View {
             }
             return false
         case .dates, .guests:
-            let matchedNorm = SearchInputParser.normalize(pending.matchedText)
-            return textNorm.contains(matchedNorm)
+            // The parser only recognizes dates/guests at the trailing edge of
+            // the text, so the confirm pill is only relevant while that phrase
+            // is still what's being typed. Defer to a re-parse rather than a
+            // naive substring check — otherwise "for two" keeps offering
+            // "2 guests" long after the user has typed past it
+            // ("...for two adults and a place").
+            let refreshed = SearchInputParser.parseAll(
+                text,
+                existingDestination: selectedDestination,
+                existingDates: selectedCheckIn,
+                existingGuests: totalGuests
+            )
+            return refreshed.contains { $0.type == pending.type }
         }
     }
 
@@ -1092,8 +1356,6 @@ struct ChipComposerField: View {
 
     private typealias GhostCategory = GhostMenuCategory
 
-    private static let ghostRotationInterval: UInt64 = 3_000_000_000
-
     private static let ghostPredictions: [(prefix: String, completion: String, category: GhostMenuCategory)] = [
         ("hotels in ", "Barcelona", .destination),
         ("flights to ", "Tokyo", .destination),
@@ -1144,19 +1406,12 @@ struct ChipComposerField: View {
         ("5 ", "guests", .guests),
     ]
 
-    private static let rotatingGhostSuggestions: [String] = ghostPredictions.map {
-        $0.prefix + $0.completion
-    }
-
-    private var currentRotatingGhostSuggestion: String {
-        guard !Self.rotatingGhostSuggestions.isEmpty else { return "" }
-        return Self.rotatingGhostSuggestions[rotatingGhostIndex % Self.rotatingGhostSuggestions.count]
-    }
-
     private func updateGhostText() {
         let lower = text.lowercased()
         guard !lower.isEmpty || !searchInputBarChips.isEmpty else {
-            ghostSuggestion = showsHomeSuggestions ? "" : currentRotatingGhostSuggestion
+            // Idle input shows the static "Ask anything" placeholder — no rotating
+            // ghost suggestion. Typed-prefix autocomplete below still applies.
+            ghostSuggestion = ""
             activeGhostCategory = .none
             return
         }
@@ -1179,30 +1434,6 @@ struct ChipComposerField: View {
         }
         ghostSuggestion = ""
         activeGhostCategory = .none
-    }
-
-    private func startRotatingGhostText() {
-        stopRotatingGhostText()
-        updateGhostText()
-        guard !showsHomeSuggestions else { return }
-
-        rotatingGhostTask = Task { @MainActor in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: Self.ghostRotationInterval)
-                guard !Task.isCancelled else { return }
-                guard searchInputIsEmpty else { continue }
-
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    rotatingGhostIndex = (rotatingGhostIndex + 1) % max(Self.rotatingGhostSuggestions.count, 1)
-                    updateGhostText()
-                }
-            }
-        }
-    }
-
-    private func stopRotatingGhostText() {
-        rotatingGhostTask?.cancel()
-        rotatingGhostTask = nil
     }
 
     private func handleGhostTextTap(_ windowPoint: CGPoint) {
@@ -1284,9 +1515,10 @@ struct ChipComposerField: View {
 
 // MARK: - Staggered pill entrance
 
-/// One-shot staggered rise/fade for the filter pills on the home entrance. Each
-/// pill starts 10pt low and transparent, then springs to place on a per-index
-/// delay so they cascade in left-to-right.
+/// One-shot staggered rise/blur/fade for the filter pills on the home entrance.
+/// Each pill starts low, transparent, and softly blurred, then springs to place
+/// on a per-index delay so they cascade in left-to-right — the same visual
+/// language as `ChipAppear` below, which handles later content swaps.
 private struct PillEntrance: ViewModifier {
     let revealed: Bool
     let index: Int
@@ -1294,9 +1526,48 @@ private struct PillEntrance: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(revealed ? 1 : 0)
-            .offset(y: revealed ? 0 : 10)
-            .animation(.spring(response: 0.38, dampingFraction: 0.85)
-                .delay(Double(index) * 0.06), value: revealed)
+            .blur(radius: revealed ? 0 : 6)
+            .offset(y: revealed ? 0 : 8)
+            .animation(.spring(response: 0.4, dampingFraction: 0.88)
+                .delay(Double(index) * 0.05), value: revealed)
+    }
+}
+
+// MARK: - Chip appear transition
+
+/// Blur + fade + slight rise applied to a whole chip as it enters or leaves the
+/// row, with a small per-index delay so a fresh set staggers in rather than
+/// popping all at once. Used for every smart-chip branch so predictions,
+/// predictive inputs, and default filters all share one motion.
+private struct ChipAppearModifier: ViewModifier {
+    let blur: CGFloat
+    let opacity: Double
+    let scale: CGFloat
+    let offsetY: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: blur)
+            .opacity(opacity)
+            .scaleEffect(scale)
+            .offset(y: offsetY)
+    }
+}
+
+private extension AnyTransition {
+    static func chipAppear(index: Int) -> AnyTransition {
+        .asymmetric(
+            insertion: .modifier(
+                active: ChipAppearModifier(blur: 6, opacity: 0, scale: 0.96, offsetY: 6),
+                identity: ChipAppearModifier(blur: 0, opacity: 1, scale: 1, offsetY: 0)
+            )
+            .animation(.spring(response: 0.4, dampingFraction: 0.88).delay(Double(index) * 0.05)),
+            removal: .modifier(
+                active: ChipAppearModifier(blur: 4, opacity: 0, scale: 0.96, offsetY: 0),
+                identity: ChipAppearModifier(blur: 0, opacity: 1, scale: 1, offsetY: 0)
+            )
+            .animation(.easeOut(duration: 0.16))
+        )
     }
 }
 
