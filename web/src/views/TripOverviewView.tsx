@@ -2,9 +2,9 @@
 // Port of TripOverviewView.swift: list of ThreadNodes with opacity/scale vs reveal.
 // Each row morphs into the CurtainSheet canvas slot (slot frames captured here).
 
-import React, { useRef, useCallback } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
-import { useAppStore, stageTrip } from '../store/appStore';
+import { useAppStore } from '../store/appStore';
 import type { Thread } from '../data/mockData';
 import { Theme } from '../theme/theme';
 import { progress, eased, lerp } from '../morph/morphProgress';

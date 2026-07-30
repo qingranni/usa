@@ -5,7 +5,7 @@
 // a drag gesture (threshold 80px down = dismiss, drag up = full reveal).
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Theme } from '../theme/theme';
 import { useAppStore } from '../store/appStore';
 import { QUICK_ANSWERS, SUGGESTIONS } from '../data/mockData';
@@ -19,7 +19,6 @@ const ComposerView: React.FC = () => {
     closeComposer,
     setComposerReveal,
     submitQuery,
-    followUpPillRect,
   } = useAppStore();
 
   const [inputValue, setInputValue] = useState('');

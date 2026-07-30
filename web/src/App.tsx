@@ -47,8 +47,6 @@ const App: React.FC = () => {
     canvasDismissing,
     openDetailCard,
     detailCard,
-    teardown,
-    setReveal,
   } = store;
 
   const showHome_ = isEmpty || showHome;

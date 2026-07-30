@@ -14,7 +14,6 @@ const NavHeader: React.FC = () => {
     reveal,
     setReveal,
     dismissCanvasToHome,
-    teardown,
     openThreadByID,
     lastOpenThreadID,
   } = useAppStore();

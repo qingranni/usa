@@ -354,7 +354,7 @@ const ContextChipIcon: React.FC<{ icon: ContextChipIconType }> = ({ icon }) => {
   }
 };
 
-const springPrimary = { type: 'spring' as const, duration: 0.333, ease: [0.48, 0.1, 0.24, 1] };
+const _springPrimary = { type: 'spring' as const, duration: 0.333, ease: [0.48, 0.1, 0.24, 1] }; void _springPrimary;
 
 // ─── Popover checkmark icon ───────────────────────────────────────────────────
 const IconCheck = () => (
@@ -592,7 +592,7 @@ const EmptySearchView: React.FC = () => {
   const [leavingFocused, setLeavingFocused] = useState(false);
   const leavingInputRef = useRef<HTMLInputElement>(null);
   const [leavingSheetPos, setLeavingSheetPos] = useState<{ top: number; left: number; width: number } | null>(null);
-  const [goingTo, setGoingTo] = useState('');
+  const [goingTo, setGoingTo] = useState(''); void goingTo;
   const [flightChipPopover, setFlightChipPopover] = useState<{
     chipId: string;
     pos: { top: number; left: number; width: number };
@@ -696,7 +696,7 @@ const EmptySearchView: React.FC = () => {
   }, [destinationSearch]);
 
   const hasText = liveText.trim().length > 0 || segments.length > 0;
-  const hasChips = displayTokens.some(t => t.type === 'chip');
+  const hasChips = displayTokens.some(t => t.type === 'chip'); void hasChips;
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newText = e.target.value;
