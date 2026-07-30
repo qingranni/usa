@@ -21,6 +21,8 @@ import { progress, eased, lerp } from './morph/morphProgress';
 import EmptySearchView from './views/EmptySearchView';
 import TripOverviewView from './views/TripOverviewView';
 import CurtainSheet from './views/CurtainSheet';
+import SearchResultsView from './views/SearchResultsView';
+import MapView from './views/MapView';
 import ComposerView from './views/ComposerView';
 import NavHeader from './views/NavHeader';
 import PackageDetailView from './views/PackageDetailView';
@@ -186,7 +188,7 @@ const App: React.FC = () => {
                   display: 'flex',
                 }}
               >
-                {/* Left: map */}
+                {/* Left: map — Jerome owns MapView.tsx */}
                 {openThread.showsMap && (
                   <div
                     className="map-bg"
@@ -196,11 +198,15 @@ const App: React.FC = () => {
                       overflow: 'hidden',
                     }}
                   >
-                    <MapPlaceholder destination={openThread.destination} />
+                    <MapView
+                      destination={openThread.destination}
+                      cards={openThread.narratives.flatMap(n => n.cards)}
+                      onPinClick={handleCardClick}
+                    />
                   </div>
                 )}
 
-                {/* Right: results curtain */}
+                {/* Right: results — Jerome owns SearchResultsView.tsx */}
                 <div style={{
                   width: openThread.showsMap ? 440 : '100%',
                   position: 'relative',
@@ -210,7 +216,7 @@ const App: React.FC = () => {
                     ? '1px solid rgba(12,14,28,0.07)'
                     : undefined,
                 }}>
-                  <CurtainSheet
+                  <SearchResultsView
                     thread={openThread}
                     onCardClick={handleCardClick}
                   />
