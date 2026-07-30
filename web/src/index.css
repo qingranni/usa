@@ -1,0 +1,170 @@
+/* index.css — Design system tokens + global reset */
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap');
+
+:root {
+  /* Colors */
+  --ink: #0C0E1C;
+  --ink-muted: rgba(12,14,28,0.5);
+  --card-item: #F7F4F3;
+  --canvas-chip-fill: #F9F7F6;
+  --chip-fill: rgba(12,14,28,0.05);
+  --dark-bg: #000;
+  --dark-surface: rgba(255,255,255,0.05);
+  --card-surface: rgb(30,33,50);
+  --dark-text: #fff;
+  --dark-text-muted: rgba(255,255,255,0.5);
+  --glass-tint: rgb(233,239,248);
+  --on-surface-variant: #676A7D;
+  --pill-glow: rgba(193,201,214,0.25);
+
+  /* Motion */
+  --ease-morph: cubic-bezier(0.75, 0, 0, 1);
+  --ease-detail: cubic-bezier(0.4, 0, 0.18, 1);
+  --ease-canvas: cubic-bezier(0.42, 0, 0.58, 1);
+  --ease-primary: cubic-bezier(0.48, 0.1, 0.22, 1);
+  --ease-soft: cubic-bezier(0.42, 0.1, 0.24, 1);
+  --ease-interactive: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --dur-morph: 750ms;
+  --dur-detail: 1550ms;
+  --dur-canvas: 500ms;
+  --dur-primary: 333ms;
+  --dur-soft: 390ms;
+  --dur-fade: 180ms;
+  --dur-interactive: 480ms;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink);
+}
+
+button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ---- utility classes ---- */
+.glass-pill {
+  background: rgba(255,255,255,0.88);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border: 1px solid rgba(255,255,255,0.5);
+  border-radius: 100px;
+  box-shadow:
+    0 2.5px 25px rgba(0,0,0,0.12),
+    0 0 0 1px rgba(193,201,214,0.25) inset;
+}
+
+.glass-surface {
+  background: rgba(255,255,255,0.72);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+}
+
+.card-shadow {
+  box-shadow: 0 2.5px 25px rgba(0,0,0,0.25);
+}
+
+/* ---- Gemini-style rotating gradient border ---- */
+@keyframes geminiSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes geminiRingFade {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.gemini-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 26px; /* 24px card radius + 2px outset */
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 10;
+  animation: geminiRingFade 1.1s ease-out forwards;
+}
+
+.gemini-ring::before {
+  content: '';
+  position: absolute;
+  inset: -120%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 55%,
+    #6366f1 65%,
+    #a855f7 72%,
+    #22d3ee 79%,
+    #fddb32 86%,
+    #f472b6 93%,
+    transparent 100%
+  );
+  animation: geminiSpin 1.1s cubic-bezier(0.15, 0, 0.75, 1) forwards;
+}
+
+.gemini-ring::after {
+  content: '';
+  position: absolute;
+  inset: 2.5px;
+  background: #ffffff;
+  border-radius: 22px; /* 24px - 2.5px border */
+}
+
+/* Chip shine sweep — runs once when chip mounts */
+@keyframes chipShine {
+  0%   { transform: translateX(-150%) skewX(-20deg); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateX(250%) skewX(-20deg); opacity: 0; }
+}
+
+/* Card border glow on focus */
+@keyframes focusRingPulse {
+  0%   { opacity: 0;   transform: scale(1);    }
+  30%  { opacity: 1;   transform: scale(1);    }
+  100% { opacity: 0;   transform: scale(1.012);}
+}
+
+/* Ambient shimmer that sweeps across the card while typing */
+@keyframes aiScanLine {
+  0%   { left: -40%; }
+  100% { left: 110%;  }
+}
+
+.chip-shine {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 0;
+  width: 55%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.7) 50%, transparent 100%);
+  animation: chipShine 0.52s cubic-bezier(0.4,0,0.2,1) forwards;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* ---- map placeholder ---- */
+.map-bg {
+  background: #e8f0e8;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.04) 0px, transparent 1px, transparent 40px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.04) 0px, transparent 1px, transparent 40px);
+}
