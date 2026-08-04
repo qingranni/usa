@@ -54,20 +54,8 @@ const NavHeader: React.FC = () => {
       zIndex: 20,
       pointerEvents: 'none',
     }}>
-      {/* Left: back button (results stage) / history (trip stage) */}
-      <div style={{
-        width: 44,
-        height: 44,
-        position: 'relative',
-        pointerEvents: 'all',
-      }}>
-        <div style={{ opacity: backOpacity, position: 'absolute', inset: 0 }}>
-          <GlassCircleButton icon="back" onClick={handleBack} />
-        </div>
-        <div style={{ opacity: historyOpacity, position: 'absolute', inset: 0 }}>
-          <GlassCircleButton icon="history" onClick={handleHistory} />
-        </div>
-      </div>
+      {/* Left: empty slot (history moved to SearchResultsView header) */}
+      <div style={{ width: 44, height: 44 }} />
 
       {/* Center: thread title crossfade */}
       <div style={{
@@ -98,15 +86,8 @@ const NavHeader: React.FC = () => {
         </AnimatePresence>
       </div>
 
-      {/* Right: overflow / settings */}
-      <div style={{ width: 44, height: 44, pointerEvents: 'all' }}>
-        <motion.div
-          animate={{ opacity: backOpacity }}
-          style={{ width: '100%', height: '100%' }}
-        >
-          <GlassCircleButton icon="trips" onClick={() => setReveal(stageTrip)} />
-        </motion.div>
-      </div>
+      {/* Right: empty spacer */}
+      <div style={{ width: 44, height: 44 }} />
     </div>
   );
 };

@@ -91,3 +91,42 @@ export function transitions(
     .map(([p, c, d, delay]) => transition(p, c, d, delay))
     .join(', ');
 }
+
+// ── Framer Motion spring presets ──────────────────────────────────────────────
+export const spring = {
+  std:    { type: 'spring' as const, stiffness: 380, damping: 34 },
+  snap:   { type: 'spring' as const, stiffness: 500, damping: 38 },
+  gentle: { type: 'spring' as const, stiffness: 260, damping: 30 },
+};
+
+// ── Easing helpers ────────────────────────────────────────────────────────────
+export const ease = {
+  out:   [0.25, 0.46, 0.45, 0.94] as [number,number,number,number],
+  inOut: [0.42, 0, 0.58, 1]       as [number,number,number,number],
+  morph: [0.75, 0, 0, 1]          as [number,number,number,number],
+};
+
+// ── Glass surface tokens ──────────────────────────────────────────────────────
+export const glass = {
+  card: {
+    background:          'rgba(255,255,255,0.82)',
+    backdropFilter:      'blur(20px) saturate(1.8)',
+    WebkitBackdropFilter:'blur(20px) saturate(1.8)',
+    border:              '1px solid rgba(255,255,255,0.5)',
+    boxShadow:           '0 2.5px 25px rgba(0,0,0,0.12), 0 0 0 1px rgba(193,201,214,0.25) inset',
+  },
+  pill: {
+    background:          'rgba(255,255,255,0.88)',
+    backdropFilter:      'blur(20px) saturate(1.8)',
+    WebkitBackdropFilter:'blur(20px) saturate(1.8)',
+    border:              '1px solid rgba(255,255,255,0.5)',
+    boxShadow:           '0 2px 12px rgba(0,0,0,0.08)',
+  },
+  elevated: {
+    background:          'rgba(255,255,255,0.92)',
+    backdropFilter:      'blur(32px) saturate(1.8)',
+    WebkitBackdropFilter:'blur(32px) saturate(1.8)',
+    border:              '1px solid rgba(255,255,255,0.6)',
+    boxShadow:           '0 8px 32px rgba(12,14,28,0.12), 0 1px 0 rgba(255,255,255,0.9) inset',
+  },
+};

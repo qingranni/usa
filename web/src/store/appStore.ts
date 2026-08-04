@@ -22,7 +22,7 @@ export const launchLoadFadeEnd = 0.92;
 export const launchClearBeat = 780;
 export const launchCardPopBeat = 80;
 export const launchSwapToExpandBeat = 260;
-export const minLoadDuration = 2200;
+export const minLoadDuration = 4500;
 export const launchLoadFloor = 500;
 
 export type LaunchPhase = 'collapsing' | 'expanding';
@@ -61,6 +61,7 @@ export interface AppState {
   // ---- loading ----
   isLoading: boolean;
   homeSubmitLoading: boolean;
+  loadingQuery: string;
 
   // ---- detail card ----
   detailCard: ResultCard | null;
@@ -123,6 +124,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   isLoading: false,
   homeSubmitLoading: false,
+  loadingQuery: '',
 
   detailCard: null,
   detailReveal: 0,
@@ -204,7 +206,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
     const newThread = existing ?? MOCK_THREADS[0];
     const threadToAdd = { ...newThread, id: `t-${Date.now()}` };
 
-    set({
+    set(state => ({
       composerActive: false,
       composerEntrance: 0,
       composerReveal: 0,
@@ -215,8 +217,14 @@ export const useAppStore = create<AppState>()((set, get) => ({
       swapOutThreadID: fromCurrent ? openThreadID : null,
       swapInThreadID: threadToAdd.id,
       homeSubmitLoading: !fromCurrent,
+      loadingQuery: query,
       isLoading: true,
-    });
+      // Pre-mount thread + canvas immediately so MapView animates during loading
+      threads: [threadToAdd, ...state.threads.filter(t => t.id !== threadToAdd.id)],
+      openThreadID: threadToAdd.id,
+      lastOpenThreadID: threadToAdd.id,
+      showHome: false,
+    }));
 
     const start = Date.now();
     const totalDuration = fromCurrent
@@ -237,10 +245,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       if (raw < 1) {
         requestAnimationFrame(tick);
       } else {
-        set(state => ({
-          threads: [threadToAdd, ...state.threads.filter(t => t.id !== threadToAdd.id)],
-          openThreadID: threadToAdd.id,
-          lastOpenThreadID: threadToAdd.id,
+        set({
           launching: false,
           launchPhase: 'expanding',
           launch: 1,
@@ -250,8 +255,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
           homeSubmitLoading: false,
           swapOutThreadID: null,
           swapInThreadID: null,
-          showHome: false,
-        }));
+        });
       }
     };
     requestAnimationFrame(tick);
