@@ -78,6 +78,17 @@ const App: React.FC = () => {
   const [selectedMapCard, setSelectedMapCard] = useState<ResultCard | null>(null);
   const [splitRatio, setSplitRatio] = useState(0.5); // 0..1, left panel fraction
   const isDraggingDivider = useRef(false);
+  const [askExpanded, setAskExpanded] = useState(false);
+  const [askText, setAskText] = useState('');
+  const askInputRef = useRef<HTMLInputElement>(null);
+  const { submitQuery: storeSubmitQuery } = useAppStore();
+  const handleAskSubmit = (text: string) => {
+    const q = text.trim();
+    if (!q) return;
+    setAskText('');
+    setAskExpanded(false);
+    storeSubmitQuery(q);
+  };
 
   const handleCardClick = useCallback((card: ResultCard) => {
     // Toggle the map pin popup instead of opening a detail page
@@ -321,6 +332,145 @@ const App: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* ── Ask anything — full-page bottom center ── */}
+      <AnimatePresence>
+        {openThreadID != null && !homeSubmitLoading && (
+          <motion.div
+            key="ask-anything"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 36, delay: 0.4 }}
+            style={{
+              position: 'absolute',
+              bottom: 20,
+              left: 0,
+              right: 0,
+              marginLeft: 'auto',
+              marginRight: 'auto',
+              width: 'min(560px, calc(100vw - 48px))',
+              zIndex: 25,
+              pointerEvents: 'all',
+              fontFamily: "'Centra No2', -apple-system, sans-serif",
+            }}
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              {!askExpanded ? (
+                <motion.button
+                  key="pill"
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{ duration: 0.18, ease: [0.25, 0.46, 0.45, 0.94] }}
+                  whileHover={{ scale: 1.015 }}
+                  whileTap={{ scale: 0.975 }}
+                  onClick={() => { setAskExpanded(true); setTimeout(() => askInputRef.current?.focus(), 50); }}
+                  style={{
+                    width: '100%', height: 50, borderRadius: 999,
+                    border: '1px solid white',
+                    background: 'linear-gradient(179.99deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.5) 95.923%), linear-gradient(90deg, rgba(247,244,243,0.9) 0%, rgba(247,244,243,0.9) 100%)',
+                    backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)',
+                    boxShadow: '0 12px 32px rgba(12,14,28,0.12)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', padding: '12px 8px',
+                  }}
+                >
+                  <span style={{ fontFamily: "'Centra No2', -apple-system, sans-serif", fontSize: 14, fontWeight: 400, color: 'rgba(12,14,28,0.5)', whiteSpace: 'nowrap', lineHeight: '18px' }}>
+                    Ask anything
+                  </span>
+                </motion.button>
+              ) : (
+                <motion.div
+                  key="expanded"
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{ duration: 0.18, ease: [0.25, 0.46, 0.45, 0.94] }}
+                  style={{
+                    borderRadius: 20,
+                    border: '1px solid rgba(12,14,28,0.08)',
+                    background: 'rgba(255,255,255,0.95)',
+                    backdropFilter: 'blur(40px)', WebkitBackdropFilter: 'blur(40px)',
+                    boxShadow: '0 12px 40px rgba(12,14,28,0.14)',
+                    padding: '20px 24px',
+                    display: 'flex', flexDirection: 'column', gap: 14,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <input
+                      ref={askInputRef}
+                      value={askText}
+                      onChange={e => setAskText(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleAskSubmit(askText);
+                        if (e.key === 'Escape') { setAskExpanded(false); setAskText(''); }
+                      }}
+                      onBlur={() => { if (!askText) setAskExpanded(false); }}
+                      placeholder="Ask anything"
+                      style={{
+                        flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                        fontSize: 13, fontWeight: 500,
+                        fontFamily: "'Centra No2', -apple-system, sans-serif",
+                        color: askText ? '#0c0e1c' : 'rgba(12,14,28,0.4)', minWidth: 0,
+                      }}
+                    />
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => { setAskExpanded(false); setAskText(''); }}
+                      style={{
+                        width: 28, height: 28, borderRadius: 100,
+                        background: 'rgba(12,14,28,0.06)', border: 'none',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', flexShrink: 0,
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M6 15l6-6 6 6" stroke="rgba(12,14,28,0.4)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </motion.button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 6, flex: 1, minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none' as const, alignItems: 'center' }}>
+                      {openThread && [
+                        'Show more',
+                        `Tell me more about ${openThread.destination}`,
+                        openThread.results.length >= 3 ? 'Compare all three' : 'More options',
+                      ].map((s, i) => (
+                        <motion.button
+                          key={i}
+                          onClick={() => handleAskSubmit(s)}
+                          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.95 }}
+                          style={{
+                            display: 'flex', alignItems: 'center',
+                            height: 36, padding: '0 16px', borderRadius: 100,
+                            background: 'rgba(12,14,28,0.07)', border: 'none',
+                            cursor: 'pointer', flexShrink: 0,
+                            fontFamily: "'Centra No2', -apple-system, sans-serif",
+                          }}
+                        >
+                          <span style={{ fontSize: 13, fontWeight: 500, color: '#0c0e1c', whiteSpace: 'nowrap' }}>{s}</span>
+                        </motion.button>
+                      ))}
+                    </div>
+                    <motion.button
+                      whileTap={{ scale: 0.93 }}
+                      onClick={() => handleAskSubmit(askText)}
+                      animate={{ background: askText ? '#0c0e1c' : 'rgba(12,14,28,0.07)', boxShadow: askText ? '0 4px 16px rgba(12,14,28,0.28)' : 'none' }}
+                      transition={{ duration: 0.2 }}
+                      style={{ width: 36, height: 36, borderRadius: 100, border: 'none', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M5 12h14M12 5l7 7-7 7" stroke={askText ? 'white' : 'rgba(12,14,28,0.4)'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </motion.button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ---- Card-swap overlay (canvas → canvas launch) ---- */}
       <AnimatePresence>
         {launching && launchFromCurrent && store.swapOutThreadID != null && (
@@ -489,7 +639,8 @@ const LoadingOverlay: React.FC = () => {
     }}>
       {/* ── Left panel (50%) ── */}
       <div style={{
-        flex: 1,
+        width: '50%',
+        flexShrink: 0,
         borderRight: '1px solid rgba(12,14,28,0.07)',
         background: '#f5f4f2',
         display: 'flex',
@@ -550,34 +701,6 @@ const LoadingOverlay: React.FC = () => {
           </motion.p>
         </div>
 
-        {/* Ask anything bar skeleton — bottom */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, type: 'spring', stiffness: 300, damping: 32 }}
-          style={{
-            position: 'absolute',
-            bottom: 16, left: 104, right: 12,
-            borderRadius: 20,
-            background: 'rgba(255,255,255,0.88)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid rgba(12,14,28,0.07)',
-            boxShadow: '0 4px 20px rgba(12,14,28,0.08)',
-            padding: '16px 20px',
-            display: 'flex', alignItems: 'center', gap: 12,
-          }}
-        >
-          <motion.div
-            animate={{ opacity: [0.35, 0.65, 0.35] }}
-            transition={{ duration: 1.8, ease: 'easeInOut', repeat: Infinity }}
-            style={{ flex: 1, height: 14, borderRadius: 6, background: 'rgba(12,14,28,0.08)' }}
-          />
-          <div style={{
-            width: 32, height: 32, borderRadius: 999,
-            background: 'rgba(12,14,28,0.06)', flexShrink: 0,
-          }} />
-        </motion.div>
       </div>
 
       {/* ── Right panel — static map placeholder (real map animates after load) ── */}
@@ -594,6 +717,33 @@ const LoadingOverlay: React.FC = () => {
           }}
         />
       </div>
+
+      {/* ── Ask anything pill skeleton — centered at page bottom ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3, type: 'spring', stiffness: 300, damping: 32 }}
+        style={{
+          position: 'absolute',
+          bottom: 20,
+          left: 0, right: 0,
+          marginLeft: 'auto', marginRight: 'auto',
+          width: 'min(560px, calc(100vw - 48px))',
+          height: 50,
+          borderRadius: 999,
+          background: 'linear-gradient(179.99deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.5) 95.923%), linear-gradient(90deg, rgba(247,244,243,0.9) 0%, rgba(247,244,243,0.9) 100%)',
+          backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)',
+          border: '1px solid white',
+          boxShadow: '0 12px 32px rgba(12,14,28,0.08)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <motion.div
+          animate={{ opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 1.8, ease: 'easeInOut', repeat: Infinity }}
+          style={{ width: 80, height: 12, borderRadius: 6, background: 'rgba(12,14,28,0.12)' }}
+        />
+      </motion.div>
     </div>
   );
 };

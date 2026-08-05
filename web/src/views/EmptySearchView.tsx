@@ -765,13 +765,13 @@ const GHOST_EXAMPLES = [
 
 // ─── Flight NLP ghost text ────────────────────────────────────────────────────
 const FLIGHT_GHOSTS = [
-  "Seattle to Tokyo, next weekend, 2 adults",
-  "New York to Miami, this Friday, 1 adult",
-  "Los Angeles to London, Dec 20–27, family of 4",
-  "Chicago to Paris, spring break, 2 travelers",
-  "San Francisco to Cancun, 3 nights, couple",
-  "Boston to Barcelona, August 10–17, solo",
-  "Dallas to Rome, next month, 2 adults",
+  "From Seattle to Tokyo, during next weekend",
+  "From New York to Miami, during this Friday",
+  "From Los Angeles to London, during Dec 20–27",
+  "From Chicago to Paris, during spring break",
+  "From San Francisco to Cancun, for a couple",
+  "From Boston to Barcelona, during August 10–17",
+  "From Dallas to Rome, during next month",
 ];
 
 // ─── Flight NLP parser ────────────────────────────────────────────────────────
@@ -881,12 +881,15 @@ const EmptySearchView: React.FC = () => {
   const { submitQuery } = useAppStore();
   const [activeTab, setActiveTab] = useState(-1);
   const [selectedLob, setSelectedLob] = useState<string>('');
-  const [flightTrip, setFlightTrip] = useState<string>('Roundtrip');
-  const [flightClass, setFlightClass] = useState<string>('Economy');
+  const DEFAULT_TRIP = 'Roundtrip';
+  const [flightTrip, setFlightTrip] = useState<string>(DEFAULT_TRIP);
+  const DEFAULT_CLASS = 'Economy';
+  const [flightClass, setFlightClass] = useState<string>(DEFAULT_CLASS);
   const [openFlightDropdown, setOpenFlightDropdown] = useState<'trip' | 'class' | null>(null);
   const [activeFlightField, setActiveFlightField] = useState<string | null>(null);
   const [leavingFrom, setLeavingFrom] = useState('');
-  const [selectedOrigin, setSelectedOrigin] = useState('Houston (HOU)');
+  const DEFAULT_ORIGIN = 'Houston (HOU)';
+  const [selectedOrigin, setSelectedOrigin] = useState(DEFAULT_ORIGIN);
   const [goingTo, setGoingTo] = useState('');
   const [flightChipPopover, setFlightChipPopover] = useState<{
     chipId: string;
@@ -2011,23 +2014,173 @@ const EmptySearchView: React.FC = () => {
                   <>
                     {/* ── Flights structured form ── */}
 
-                    {/* Row 1: Chip row */}
+                    {/* Row 1: Input row — ghost text + input + voice + submit */}
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ type: 'spring', stiffness: 500, damping: 34, delay: 0.0 }}
+                      style={{
+                        background: 'white',
+                        height: 84,
+                        padding: 24,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                      }}
+                    >
+                      {/* Playback display + leavingFrom input */}
+                      {(() => {
+                        const fmt = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        const totalTravelers = travelersAdults + travelersChildren + travelersInfantsSeat + travelersInfantsLap;
+                        const hasAnyFill = !!(goingTo || flightDates.depart);
+                        let playbackText = '';
+                        if (selectedOrigin && goingTo) {
+                          playbackText = `From ${selectedOrigin} to ${goingTo}`;
+                        } else if (selectedOrigin) {
+                          playbackText = `From ${selectedOrigin}`;
+                        } else if (goingTo) {
+                          playbackText = `To ${goingTo}`;
+                        }
+                        if (flightDates.depart) {
+                          const dateStr = flightDates.return
+                            ? `${fmt(flightDates.depart)} – ${fmt(flightDates.return)}`
+                            : fmt(flightDates.depart);
+                          playbackText += playbackText ? `, during ${dateStr}` : `During ${dateStr}`;
+                        }
+                        if (totalTravelers > 1 || travelersChildren > 0) {
+                          const tStr = `for ${totalTravelers} traveler${totalTravelers !== 1 ? 's' : ''}`;
+                          playbackText += playbackText ? `, ${tStr}` : tStr;
+                        }
+                        return (
+                          <div style={{ flex: 1, position: 'relative', minWidth: 0, height: 36, display: 'flex', alignItems: 'center' }}>
+                            {/* Ghost text — shown when nothing filled */}
+                            <AnimatePresence mode="wait" initial={false}>
+                              {!hasAnyFill && leavingFrom === '' && (
+                                <motion.span
+                                  key={flightGhostIndex}
+                                  initial={{ opacity: 0, y: 6 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -5, transition: { duration: 0.18 } }}
+                                  transition={{ duration: 0.26, ease: ease.out }}
+                                  style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    fontFamily: "'Centra No2', -apple-system, sans-serif",
+                                    fontSize: 14,
+                                    fontWeight: 400,
+                                    color: '#676A7D',
+                                    pointerEvents: 'none',
+                                    userSelect: 'none',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                  }}
+                                >
+                                  {FLIGHT_GHOSTS[flightGhostIndex]}
+                                </motion.span>
+                              )}
+                            </AnimatePresence>
+
+                            {/* Playback text — shown as chips are filled */}
+                            <AnimatePresence initial={false}>
+                              {hasAnyFill && (
+                                <motion.span
+                                  key={playbackText}
+                                  initial={{ opacity: 0, y: 4 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -4 }}
+                                  transition={{ duration: 0.2, ease: ease.out }}
+                                  style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    fontFamily: "'Centra No2', -apple-system, sans-serif",
+                                    fontSize: 14,
+                                    fontWeight: 500,
+                                    color: '#0C0E1C',
+                                    pointerEvents: 'none',
+                                    userSelect: 'none',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                  }}
+                                >
+                                  {playbackText}
+                                </motion.span>
+                              )}
+                            </AnimatePresence>
+
+                            {/* Actual input — transparent text, visible caret */}
+                            <input
+                              value={leavingFrom}
+                              onChange={e => setLeavingFrom(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
+                                if (e.key === 'Enter') {
+                                  applyFlightParse(leavingFrom);
+                                  setTimeout(() => {
+                                    const parsed = parseFlightInput(leavingFrom);
+                                    const nextChip = !parsed.origin ? 'origin'
+                                      : !parsed.destination ? 'destination'
+                                      : !parsed.departDate ? 'dates'
+                                      : !parsed.adults ? 'travelers'
+                                      : null;
+                                    if (nextChip) {
+                                      const btn = flightChipBtnRefs.current[nextChip];
+                                      if (btn) {
+                                        const r = btn.getBoundingClientRect();
+                                        setFlightChipPopover({ chipId: nextChip, pos: { top: r.bottom + 8, left: r.left, width: r.width } });
+                                      }
+                                    }
+                                  }, 50);
+                                }
+                              }}
+                              style={{
+                                position: 'absolute', inset: 0,
+                                border: 'none', outline: 'none', background: 'transparent',
+                                fontSize: 14, fontWeight: 400,
+                                color: hasAnyFill ? 'transparent' : '#0C0E1C',
+                                caretColor: '#0C0E1C',
+                                width: '100%', padding: 0, margin: 0,
+                                fontFamily: "'Centra No2', -apple-system, sans-serif",
+                              }}
+                            />
+                          </div>
+                        );
+                      })()}
+
+                    </motion.div>
+
+                    {/* Row 2: Chip row + CTAs on the left */}
                     <motion.div
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ type: 'spring', stiffness: 500, damping: 34, delay: 0.0 }}
-                      style={{ position: 'relative', overflow: 'hidden', background: 'rgba(247,244,243,0.55)' }}
+                      transition={{ type: 'spring', stiffness: 500, damping: 34, delay: 0.04 }}
+                      style={{ position: 'relative', background: 'rgba(247,244,243,0.55)' }}
                     >
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
                         padding: 16,
-                        overflowX: 'auto',
-                        scrollbarWidth: 'none',
-                        msOverflowStyle: 'none',
-                        flexWrap: 'nowrap',
+                        gap: 0,
                       }}>
+                        {/* Scrollable chips — flex 1, with right gradient peek */}
+                        <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          overflowX: 'auto',
+                          scrollbarWidth: 'none',
+                          msOverflowStyle: 'none',
+                          flexWrap: 'nowrap',
+                          paddingTop: 8,
+                          paddingBottom: 8,
+                          marginTop: -8,
+                          marginBottom: -8,
+                          paddingRight: 40,
+                        }}>
                         {/* Roundtrip chip — frosted glass */}
                         <div style={{ position: 'relative', flexShrink: 0 }}>
                           <motion.button
@@ -2044,12 +2197,20 @@ const EmptySearchView: React.FC = () => {
                             style={{
                               display: 'flex', alignItems: 'center', gap: 6,
                               height: 48, padding: 16, borderRadius: 999,
-                              background: 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.8) 96%), linear-gradient(90deg, rgba(247,244,243,0.25) 0%, rgba(247,244,243,0.25) 100%)',
-                              backdropFilter: 'blur(15px)',
-                              WebkitBackdropFilter: 'blur(15px)',
-                              border: '1px solid white',
-                              boxShadow: '0px 12px 32px rgba(12,14,28,0.08)',
-                              fontSize: 14, fontWeight: 500, color: '#0c0e1c', cursor: 'pointer',
+                              ...(flightTrip !== DEFAULT_TRIP ? {
+                                background: 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.8) 96%), linear-gradient(90deg, rgba(247,244,243,0.25) 0%, rgba(247,244,243,0.25) 100%)',
+                                backdropFilter: 'blur(15px)',
+                                WebkitBackdropFilter: 'blur(15px)',
+                                border: '1px solid white',
+                                boxShadow: '0px 12px 32px rgba(12,14,28,0.08)',
+                              } : {
+                                background: 'rgba(103,106,125,0.08)',
+                                backdropFilter: 'none',
+                                WebkitBackdropFilter: 'none',
+                                border: 'none',
+                                boxShadow: 'none',
+                              }),
+                              fontSize: 14, fontWeight: 500, color: flightTrip !== DEFAULT_TRIP ? '#0c0e1c' : 'rgba(25,30,59,0.75)', cursor: 'pointer',
                               fontFamily: "'Centra No2', -apple-system, sans-serif",
                               whiteSpace: 'nowrap',
                             }}
@@ -2062,27 +2223,17 @@ const EmptySearchView: React.FC = () => {
 
                         {/* Origin, Destination, Dates, Travelers chips */}
                         {([
-                          { id: 'origin',      label: selectedOrigin || 'Add origin',       Icon: IconPlane    },
-                          { id: 'destination', label: goingTo    || 'Add destination',   Icon: IconPin      },
-                          { id: 'dates',       label: (() => {
-                            const fmt = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                            const flexSuffix = flexDelta > 0 ? ` (±${flexDelta})` : '';
-                            if (flightDates.depart && flightDates.return) {
-                              return `${fmt(flightDates.depart)} – ${fmt(flightDates.return)}${flexSuffix}`;
-                            } else if (flightDates.depart) {
-                              return `${fmt(flightDates.depart)}${flexSuffix}`;
-                            }
-                            return 'Add dates';
-                          })(),                                           Icon: IconCalendar },
-                          { id: 'travelers',   label: (() => {
-                            const total = travelersAdults + travelersChildren + travelersInfantsSeat + travelersInfantsLap;
-                            if (travelersAdults === 1 && travelersChildren === 0 && travelersInfantsSeat === 0 && travelersInfantsLap === 0) return 'Add travelers';
-                            return `${total} traveler${total !== 1 ? 's' : ''}`;
-                          })(),                                           Icon: IconPeople   },
+                          { id: 'origin',      label: 'Where from',  Icon: IconPlane    },
+                          { id: 'destination', label: 'Where to',    Icon: IconPin      },
+                          { id: 'dates',       label: 'When',        Icon: IconCalendar },
+                          { id: 'travelers',   label: 'Who',         Icon: IconPeople   },
                         ]).map((chip) => {
                           const isActiveChip = activeFlightField === chip.id;
-                          const isFilled = !chip.label.startsWith('Add ');
-                          const useFrosted = isFilled || isActiveChip;
+                          const isFilled = chip.id === 'origin' ? (!!selectedOrigin && selectedOrigin !== DEFAULT_ORIGIN)
+                            : chip.id === 'destination' ? !!goingTo
+                            : chip.id === 'dates' ? !!flightDates.depart
+                            : (travelersAdults > 1 || travelersChildren > 0 || travelersInfantsSeat > 0 || travelersInfantsLap > 0);
+                          const useFrosted = isFilled;
                           return (
                             <motion.button
                               key={chip.id}
@@ -2122,7 +2273,7 @@ const EmptySearchView: React.FC = () => {
                                 fontFamily: "'Centra No2', -apple-system, sans-serif",
                               }}
                             >
-                              <chip.Icon />
+                              {isFilled ? <IconCheck /> : <chip.Icon />}
                               <span style={{
                                 fontFamily: "'Centra No2', -apple-system, sans-serif",
                                 fontSize: 14, fontWeight: 500, lineHeight: '18px',
@@ -2160,168 +2311,73 @@ const EmptySearchView: React.FC = () => {
                             {flightClass}
                           </motion.button>
                         </div>
-                      </div>
-                      {/* Gradient fade at right edge */}
-                      <div style={{
-                        position: 'absolute', top: 0, right: 0, bottom: 0, width: 48,
-                        background: 'linear-gradient(to right, transparent, rgba(247,244,243,0.95))',
-                        pointerEvents: 'none',
-                      }} />
-                    </motion.div>
+                        </div>
+                        {/* Gradient fade — peek indicator */}
+                        <div style={{
+                          position: 'absolute', top: 0, right: 0, bottom: 0, width: 56,
+                          background: 'linear-gradient(to right, transparent, rgba(247,244,243,0.98))',
+                          pointerEvents: 'none',
+                        }} />
+                        </div>
 
-                    {/* Row 2: Input row — ghost text + input + voice + submit */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ type: 'spring', stiffness: 500, damping: 34, delay: 0.04 }}
-                      style={{
-                        background: 'white',
-                        height: 84,
-                        padding: 24,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                      }}
-                    >
-                      {/* Ghost text + leavingFrom input */}
-                      <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
-                        {leavingFrom === '' && (
-                          <AnimatePresence mode="wait" initial={false}>
-                            <motion.span
-                              key={flightGhostIndex}
-                              initial={{ opacity: 0, y: 6 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -5, transition: { duration: 0.18 } }}
-                              transition={{ duration: 0.26, ease: ease.out }}
+                        {/* Voice button */}
+                        <motion.button
+                          onClick={e => {
+                            e.stopPropagation();
+                            if (voiceListening && voiceTarget === 'flights') stopVoice(false);
+                            else startVoice('flights');
+                          }}
+                          whileHover={{ scale: 1.08 }}
+                          whileTap={{ scale: 0.93 }}
+                          style={{
+                            width: 48, height: 48, borderRadius: 40000,
+                            background: '#e9ebef', border: 'none',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', flexShrink: 0,
+                          }}
+                        >
+                          <AnimatePresence mode="wait">
+                            {voiceListening && voiceTarget === 'flights' ? (
+                              <motion.span key="cancel-f" initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={{ type: 'spring', stiffness: 400, damping: 30 }}>×</motion.span>
+                            ) : (
+                              <motion.img key="mic-f" src={ASSET_VOICE} alt="voice" initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={{ type: 'spring', stiffness: 400, damping: 30 }} style={{ width: 15, height: 16.5, objectFit: 'contain' }} />
+                            )}
+                          </AnimatePresence>
+                        </motion.button>
+
+                        {/* Submit button */}
+                        {(() => {
+                          const flightsReady = !!(selectedOrigin && goingTo && flightDates.depart);
+                          const isDisabled = activeFlightField || !flightsReady;
+                          return (
+                            <motion.button
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (voiceListening && voiceTarget === 'flights') stopVoice(true);
+                                else if (flightsReady) handleSubmit();
+                              }}
+                              animate={{ background: flightsReady ? T.submitBg : 'rgba(253,219,50,0.35)', boxShadow: 'none', borderColor: 'transparent' }}
+                              transition={spring.snap}
+                              whileHover={flightsReady && !activeFlightField ? { scale: 1.08 } : {}}
+                              whileTap={flightsReady && !activeFlightField ? { scale: 0.92 } : {}}
                               style={{
-                                position: 'absolute',
-                                inset: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                fontFamily: "'Centra No2', -apple-system, sans-serif",
-                                fontSize: 14,
-                                fontWeight: 400,
-                                color: '#676A7D',
-                                pointerEvents: 'none',
-                                userSelect: 'none',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
+                                width: 48, height: 48, borderRadius: 100,
+                                borderWidth: 1, borderStyle: 'solid',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                cursor: isDisabled ? 'default' : 'pointer', flexShrink: 0,
+                                marginLeft: 8,
+                                opacity: activeFlightField ? 0.5 : 1,
+                                transition: 'opacity 0.2s ease',
+                                pointerEvents: activeFlightField ? 'none' : 'all',
                               }}
                             >
-                              {FLIGHT_GHOSTS[flightGhostIndex]}
-                            </motion.span>
-                          </AnimatePresence>
-                        )}
-                        <input
-                          placeholder=""
-                          value={leavingFrom}
-                          onChange={e => setLeavingFrom(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
-                            if (e.key === 'Enter') {
-                              applyFlightParse(leavingFrom);
-                              setTimeout(() => {
-                                const parsed = parseFlightInput(leavingFrom);
-                                const nextChip = !parsed.origin ? 'origin'
-                                  : !parsed.destination ? 'destination'
-                                  : !parsed.departDate ? 'dates'
-                                  : !parsed.adults ? 'travelers'
-                                  : null;
-                                if (nextChip) {
-                                  const btn = flightChipBtnRefs.current[nextChip];
-                                  if (btn) {
-                                    const r = btn.getBoundingClientRect();
-                                    setFlightChipPopover({ chipId: nextChip, pos: { top: r.bottom + 8, left: r.left, width: r.width } });
-                                  }
-                                }
-                              }, 50);
-                            }
-                          }}
-                          style={{
-                            border: 'none', outline: 'none', background: 'transparent',
-                            fontSize: 16, fontWeight: 400, color: '#191E3B',
-                            width: '100%', padding: 0, margin: 0,
-                            fontFamily: "'Centra No2', -apple-system, sans-serif",
-                            position: 'relative',
-                          }}
-                        />
+                              <IconArrow color='#0C0E1C' />
+                            </motion.button>
+                          );
+                        })()}
                       </div>
-
-                      {/* Voice button */}
-                      <motion.button
-                        onClick={e => {
-                          e.stopPropagation();
-                          if (voiceListening && voiceTarget === 'flights') stopVoice(false);
-                          else startVoice('flights');
-                        }}
-                        whileHover={{ scale: 1.08 }}
-                        whileTap={{ scale: 0.93 }}
-                        style={{
-                          width: 52, height: 52, borderRadius: 40000,
-                          background: '#e9ebef', border: 'none',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          cursor: 'pointer', flexShrink: 0,
-                          fontSize: 18, color: '#191E3B',
-                        }}
-                      >
-                        <AnimatePresence mode="wait">
-                          {voiceListening && voiceTarget === 'flights' ? (
-                            <motion.span
-                              key="cancel-f"
-                              initial={{ opacity: 0, scale: 0.7 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.7 }}
-                              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                            >×</motion.span>
-                          ) : (
-                            <motion.img
-                              key="mic-f"
-                              src={ASSET_VOICE}
-                              alt="voice"
-                              initial={{ opacity: 0, scale: 0.7 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.7 }}
-                              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                              style={{ width: 15, height: 16.5, objectFit: 'contain' }}
-                            />
-                          )}
-                        </AnimatePresence>
-                      </motion.button>
-
-                      {/* Submit button — active only when origin + destination + depart date are set */}
-                      {(() => {
-                        const flightsReady = !!(selectedOrigin && goingTo && flightDates.depart);
-                        const isDisabled = activeFlightField || !flightsReady;
-                        return (
-                          <motion.button
-                            onClick={e => {
-                              e.stopPropagation();
-                              if (voiceListening && voiceTarget === 'flights') stopVoice(true);
-                              else if (flightsReady) handleSubmit();
-                            }}
-                            animate={{
-                              background: flightsReady ? T.submitBg : 'rgba(253,219,50,0.35)',
-                              boxShadow: 'none',
-                              borderColor: 'transparent',
-                            }}
-                            transition={spring.snap}
-                            whileHover={flightsReady && !activeFlightField ? { scale: 1.08 } : {}}
-                            whileTap={flightsReady && !activeFlightField ? { scale: 0.92 } : {}}
-                            style={{
-                              width: 52, height: 52, borderRadius: 100,
-                              borderWidth: 1, borderStyle: 'solid',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              cursor: isDisabled ? 'default' : 'pointer', flexShrink: 0,
-                              opacity: activeFlightField ? 0.5 : 1,
-                              transition: 'opacity 0.2s ease',
-                              pointerEvents: activeFlightField ? 'none' : 'all',
-                            }}
-                          >
-                            <IconArrow color='#0C0E1C' />
-                          </motion.button>
-                        );
-                      })()}
                     </motion.div>
+
                   </>
                 ) : (
                   /* ── Other LOBs placeholder ── */

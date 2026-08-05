@@ -91,17 +91,6 @@ const IconFilters = () => (
   </svg>
 );
 
-const IconChevronUp = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <path d="M18 15l-6-6-6 6" stroke="rgba(12,14,28,0.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-);
-
-const IconArrow = ({ color = 'white' }: { color?: string }) => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <path d="M5 12h14M12 5l7 7-7 7" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-);
 
 const IconSparkle = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -120,9 +109,8 @@ function chipIcon(chip: string) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 const SearchResultsView: React.FC<Props> = ({ thread, onCardClick }) => {
-  const { dismissCanvasToHome, submitQuery } = useAppStore();
+  const { dismissCanvasToHome } = useAppStore();
   const [saved, setSaved] = useState<Set<string>>(new Set());
-  const [composerText, setComposerText] = useState('');
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentWidth, setContentWidth] = useState(0);
 
@@ -138,29 +126,14 @@ const SearchResultsView: React.FC<Props> = ({ thread, onCardClick }) => {
   const cols = contentWidth >= 720 ? 3 : 2;
   const cardWidth = `calc(${100 / cols}% - ${(16 * (cols - 1)) / cols}px)`;
 
-  const handleComposerSubmit = (text: string) => {
-    const q = text.trim();
-    if (!q) return;
-    setComposerText('');
-    submitQuery(q);
-  };
-
   const toggle = (id: string) =>
     setSaved(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
-  const firstResult = thread.results[0];
-  const suggestions = [
-    'Show more',
-    `Tell me more about ${firstResult?.title ?? thread.destination}`,
-    thread.results.length >= 3 ? 'Compare all three' : 'More options',
-  ];
 
   return (
     <div style={{
       display: 'flex',
       height: '100%',
       background: '#ffffff',
-      overflow: 'hidden',
       fontFamily: F,
     }}>
 
@@ -197,7 +170,6 @@ const SearchResultsView: React.FC<Props> = ({ thread, onCardClick }) => {
         minWidth: 0,
         display: 'flex',
         flexDirection: 'column',
-        gap: 24,
         paddingTop: 24,
         paddingRight: 24,
         paddingBottom: 24,
@@ -251,7 +223,8 @@ const SearchResultsView: React.FC<Props> = ({ thread, onCardClick }) => {
           flexShrink: 0,
           position: 'relative',
           padding: '10px 6px 6px',
-          margin: '-10px -6px -6px',
+          margin: '0 -6px -6px',
+          marginTop: 24,
         }}>
           {/* Filter button with count badge */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -303,16 +276,16 @@ const SearchResultsView: React.FC<Props> = ({ thread, onCardClick }) => {
         <div style={{
           flex: 1,
           overflowY: 'auto',
-          overflowX: 'visible',
           scrollbarWidth: 'none',
           display: 'flex',
           flexDirection: 'column',
           gap: 24,
-          paddingBottom: 148,
+          paddingBottom: 24,
           paddingLeft: 4,
           paddingRight: 4,
           marginLeft: -4,
           marginRight: -4,
+          marginTop: 24,
         }}>
           {/* Section title + description — gap-[4px] */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
@@ -361,97 +334,6 @@ const SearchResultsView: React.FC<Props> = ({ thread, onCardClick }) => {
           )}
         </div>
 
-        {/* ── Ask anything composer bar — absolute bottom ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...spring.gentle, delay: 0.3 }}
-          style={{
-            position: 'absolute',
-            bottom: 16, left: 0, right: 24,
-            borderRadius: 20,
-            border: '1px solid rgba(12,14,28,0.08)',
-            background: 'rgba(255,255,255,0.92)',
-            backdropFilter: 'blur(40px)',
-            WebkitBackdropFilter: 'blur(40px)',
-            boxShadow: '0 8px 32px rgba(12,14,28,0.14), 0 1px 0 rgba(255,255,255,0.9) inset',
-            padding: '20px 24px',
-            display: 'flex', flexDirection: 'column', gap: 14,
-          }}
-        >
-          {/* Top row: input + collapse */}
-          <div style={{
-            display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between', gap: 12,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-              <input
-                value={composerText}
-                onChange={e => setComposerText(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleComposerSubmit(composerText)}
-                placeholder="Ask anything"
-                style={{
-                  flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                  fontSize: 13, fontWeight: 500, fontFamily: F, letterSpacing: '-0.01em',
-                  color: composerText ? '#0c0e1c' : 'rgba(12,14,28,0.4)',
-                  minWidth: 0,
-                }}
-              />
-            </div>
-            <IconChevronUp />
-          </div>
-
-          {/* Suggestion pills row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            <div style={{
-              display: 'flex', gap: 6, flex: 1, minWidth: 0,
-              overflowX: 'auto', scrollbarWidth: 'none',
-              alignItems: 'center',
-              paddingTop: 4, paddingBottom: 4,
-              marginTop: -4, marginBottom: -4,
-            }}>
-              {suggestions.map((s, i) => (
-                <motion.button
-                  key={i}
-                  onClick={() => handleComposerSubmit(s)}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.95 }}
-                  style={{
-                    display: 'flex', alignItems: 'center',
-                    height: 48, padding: '0 20px',
-                    borderRadius: 100,
-                    background: 'rgba(12,14,28,0.07)',
-                    border: 'none',
-                    cursor: 'pointer', flexShrink: 0,
-                    fontFamily: F,
-                  }}
-                >
-                  <span style={{ fontSize: 13, fontWeight: 500, color: '#0c0e1c', whiteSpace: 'nowrap', lineHeight: '18px' }}>{s}</span>
-                </motion.button>
-              ))}
-            </div>
-
-            <motion.button
-              whileTap={{ scale: 0.93 }}
-              onClick={() => handleComposerSubmit(composerText)}
-              animate={{
-                background: composerText ? '#0c0e1c' : 'rgba(12,14,28,0.07)',
-                boxShadow: composerText
-                  ? '0 4px 16px rgba(12,14,28,0.28)'
-                  : 'none',
-              }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              style={{
-                width: 36, height: 36, borderRadius: 100,
-                border: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', flexShrink: 0, marginLeft: 8,
-              }}
-            >
-              <IconArrow color={composerText ? 'white' : 'rgba(12,14,28,0.4)'} />
-            </motion.button>
-          </div>
-        </motion.div>
       </div>
     </div>
   );
